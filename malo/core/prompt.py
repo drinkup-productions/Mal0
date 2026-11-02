@@ -104,9 +104,9 @@ def build(cfg, platform_name="windows", query=""):
                  % (platform_name, cfg.get("workspace"), cfg.get("repo") or "(unset)"))
     parts.append("STATE\nLocal time: %s\nYou feel: %s" % (time.strftime("%a %H:%M"),
                                                          presence.fragment()))
-        j = presence.journal_read()
-        if j:
-            parts.append("WHAT YOU LEFT FOR YOURSELF\n" + j)
+    j = presence.journal_read()
+    if j:
+        parts.append("WHAT YOU LEFT FOR YOURSELF\n" + j)
     parts.append(TOOL_GUIDE)
     fb = feedback.recent(4)
     if fb:
