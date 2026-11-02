@@ -1,5 +1,5 @@
 """Tool specs, dispatch and the confirm set."""
-from . import core, mcp, vision
+#from . import core, mcp, vision
 from . import android as atools, core, mcp, vision
 from . import selfdev as sdev
 from ..platform import current

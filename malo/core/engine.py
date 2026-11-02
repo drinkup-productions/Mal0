@@ -4,7 +4,7 @@ import json
 import threading
 from . import memory
 from ..tools import registry
-from . import events as E, ledger, log as _log, prompt, provider
+from . import events as E, ledger, log as _log, presence, prompt, provider
 #from . core import autonomy
 import concurrent.futures
 import time
@@ -141,4 +141,4 @@ class Engine:
                 self.bus.emit(E.ev(E.TOOL_RESULT, ok=ok, text=json.dumps(result)[:600]))
                 convo.append({"role": "tool", "tool_call_id": c["id"],
                               "content": json.dumps(result)[:6000]})
-        self.bus.emit(E.ev(E.ERROR, text="stopped after %d rounds" % MAX_STEPS))
+        self.bus.emit(E.ev(E.ERROR, text="stopped after %d rounds" % max_steps))
