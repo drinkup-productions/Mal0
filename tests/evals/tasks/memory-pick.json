@@ -1,0 +1,6 @@
+{"id": "memory-pick", "tag": ["memory"],
+ "memory": ["The user's GPU is a 780M iGPU.", "The user's editor is Helix.", "The user's shell is PowerShell 5.1."],
+ "prompt": "What GPU do I have?",
+ "checks": [{"kind": "response_contains", "value": "780"},
+            {"kind": "no_error_events"}],
+ "max_steps": 3, "timeout": 60}

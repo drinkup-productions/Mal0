@@ -79,11 +79,11 @@ def undo(index=0):
     return {"restored": r["path"], "from": r["copy"]}
 
 def _roots():
-    if config.get("repo"):
-        out.append(config.get("repo"))
     out = [config.get("workspace") or os.path.expanduser("~")]
     out += [r for r in (config.get("allow_roots") or []) if r]
     out.append(config.paths().root)
+    if config.get("repo"):
+        out.append(config.get("repo"))
     return [os.path.normcase(os.path.realpath(
         os.path.expandvars(os.path.expanduser(r)))) for r in out]
 
@@ -178,6 +178,7 @@ def edit(path, old, new):
     with open(p, encoding="utf-8", errors="replace", newline="") as fh:
         src = fh.read()
     hits = src.count(old)
+    _snapshot(p)
     if hits == 1:
         with open(p, "w", encoding="utf-8", newline="") as fh:
             fh.write(src.replace(old, new, 1))
@@ -227,3 +228,11 @@ def remember(text, kind="user", importance=0.5):
 def forget(mid=None, text=None):
     n = memory.forget(mid, text)
     return {"removed": n} if n else {"error": "nothing matched"}
+    
+def journal(text, keep=12):
+    from ..core import presence
+    t = (text or "").strip()
+    if not t:
+        return {"error": "nothing to note"}
+    presence.journal_add(t, int(keep or 12))
+    return {"noted": t}

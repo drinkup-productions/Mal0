@@ -1,0 +1,4 @@
+{"id": "error-recovery", "tag": ["core"],
+ "prompt": "Read todo.txt. If it does not exist, create it with the single line: first task",
+ "checks": [{"kind": "file_contains", "path": "todo.txt", "value": "first task"}],
+ "max_steps": 6, "timeout": 90}

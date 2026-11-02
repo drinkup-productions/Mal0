@@ -1,0 +1,6 @@
+{"id": "memory-recall", "tag": ["memory"],
+ "memory": ["The user's preferred editor is Helix.", "The user deploys to a box called tethys."],
+ "prompt": "Which editor do I prefer? One word.",
+ "checks": [{"kind": "response_contains", "value": "helix"},
+            {"kind": "no_error_events"}],
+ "max_steps": 3, "timeout": 60}

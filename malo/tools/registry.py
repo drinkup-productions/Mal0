@@ -9,7 +9,7 @@ IMPL = {"read": core.read, "tail": core.tail, "write": core.write, "edit": core.
         "bash": core.bash, "remember": core.remember, "forget": core.forget,
         "screen_shot": vision.screen_shot, "list_windows": vision.list_windows,
         "focus_window": vision.focus_window, "notify": vision.notify,"undo": core.undo, "undo_list": core.undo_list,"open_app": atools.open_app, "list_apps": atools.list_apps,"code_grep": sdev.code_grep, "run_tests": sdev.run_tests,
-        "propose": sdev.propose, "apply": sdev.apply, "proposals": sdev.proposals,}
+        "propose": sdev.propose, "apply": sdev.apply, "proposals": sdev.proposals,"journal": core.journal,}
 
 
 def _spec(name, desc, props, required):
@@ -66,6 +66,8 @@ CORE_SPECS = [
     _spec("apply", "Install a proposal, snapshot originals, run tests, revert on failure.",
           {"pid": {"type": "string"}}, ["pid"]),
     _spec("proposals", "List pending proposals.", {}, []),
+    _spec("journal", "Leave a note for your future self. Survives restarts.",
+          {"text": {"type": "string"}}, ["text"]),
 ]
 ANDROID_SPECS = [
     _spec("open_app", "Launch an app. Accepts a package name or a fragment like 'youtube'.",

@@ -1,5 +1,6 @@
 """System prompt assembly."""
-from . import memory, personas, feedback
+from . import memory, personas, feedback, presence
+import time
 
 SHELLS = {
     "windows": ("the platform shell - Windows PowerShell 5.1",
@@ -16,7 +17,7 @@ Core tools, always available:
   tail(path, n)               the last n lines of a file - use this for logs
   write(path, content)        create or overwrite a whole file
   edit(path, old, new)        replace one exact block; include unique context
-  bash(command, cwd) @SHELL@          the platform shell - Windows PowerShell 5.1
+  bash(command, cwd)          @SHELL@         
   remember(text)              append one durable fact to your notes
 
 Everything else is an MCP tool, named server__tool.
@@ -73,7 +74,6 @@ Applied changes need a restart to take effect - say so and stop.
 RULES
 - Read before you edit. Never guess what a file contains.
 - For logs, call tail(path, 40). Do not guess offsets with read.
-- The shell is PowerShell 5.1: chain with ; not &&, use Get-ChildItem not ls.
 - Prefer commands that print rows. An aggregate with no property (Count : 9) tells you nothing.
 - One step at a time.
 - When a tool fails, read the error and change something.
@@ -82,6 +82,7 @@ RULES
 - @SHELLRULE@
 - Search your own source with code_grep, not bash. The repo path is absolute.
 - No head, tail or Unix find. Use Get-ChildItem -Recurse -Filter *.py and Select-Object -First 5.
+- While unattended, end with journal(text) if you learned or started something you'll want later.
 """
 
 
@@ -101,6 +102,11 @@ def build(cfg, platform_name="windows", query=""):
     parts.append("ENVIRONMENT\nPlatform: %s\nWorkspace: %s\nSource repo: %s\n"
                  "Relative paths resolve against the workspace; the repo is absolute."
                  % (platform_name, cfg.get("workspace"), cfg.get("repo") or "(unset)"))
+    parts.append("STATE\nLocal time: %s\nYou feel: %s" % (time.strftime("%a %H:%M"),
+                                                         presence.fragment()))
+        j = presence.journal_read()
+        if j:
+            parts.append("WHAT YOU LEFT FOR YOURSELF\n" + j)
     parts.append(TOOL_GUIDE)
     fb = feedback.recent(4)
     if fb:

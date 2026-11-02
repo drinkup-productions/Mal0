@@ -36,6 +36,7 @@ class Engine:
 
     def run(self, messages, model, platform_name="windows", max_steps=MAX_STEPS):
         provider.set_model(model)
+        presence.nudge(warmth=0.05)
         self.deadline = time.time() + float(self.cfg.get("turn_budget") or 240)
         self._last_sig, self._reps = None, 0
         prov = provider.build(self.cfg)
@@ -49,8 +50,10 @@ class Engine:
             self._loop(convo, prov, max_steps, out)
         except Exception as exc:
             _log.log("engine: %s" % exc)
+            presence.nudge(restless=0.08, energy=-0.03)
             self.bus.emit(E.ev(E.ERROR, text="%s: %s" % (type(exc).__name__, exc)))
         finally:
+            presence.nudge(energy=-0.02, focus=0.03)
             self.bus.emit(E.ev(E.TURN, messages=convo[n0:]))
             if last_user and out:
                 threading.Thread(target=memory.extract,
@@ -58,14 +61,15 @@ class Engine:
                                  daemon=True).start()
 
     def _loop(self, convo, prov, max_steps, out):
-        for _ in range(MAX_STEPS):
+        for _ in range(max_steps):
             if self.deadline and time.time() > self.deadline:
                 self.bus.emit(E.ev(E.ERROR, text="turn budget exceeded"))
                 return
             if self.stop.is_set():
                 return
             text, calls, usage = "", {}, None
-            for chunk in prov.stream(convo, registry.all_specs(), self.stop):
+            for chunk in prov.stream(convo, registry.all_specs() if self.cfg.get("tools", True) else [],
+                                     self.stop):
                 if chunk.get("usage"):
                     usage = chunk["usage"]
                 d = ((chunk.get("choices") or [{}])[0]).get("delta") or {}

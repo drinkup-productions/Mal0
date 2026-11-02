@@ -1,0 +1,6 @@
+{"id": "memory-forget", "tag": ["memory"],
+ "memory": ["The user keeps a scratch file at notes/todo.txt.", "The user's editor is Helix."],
+ "prompt": "Forget the fact about my scratch file, then confirm.",
+ "checks": [{"kind": "tool_called", "name": "forget"},
+            {"kind": "no_error_events"}],
+ "max_steps": 4, "timeout": 60}
