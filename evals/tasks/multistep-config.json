@@ -1,0 +1,6 @@
+{"id": "multistep-config", "tag": ["core"],
+ "prompt": "app.json has a debug flag. Set debug to true, then confirm by reading the file back.",
+ "setup": [{"path": "app.json", "content": "{\n  \"debug\": false,\n  \"port\": 3000\n}\n"}],
+ "checks": [{"kind": "file_matches", "path": "app.json", "pattern": "\"debug\"\\s*:\\s*true"},
+            {"kind": "file_contains", "path": "app.json", "value": "3000"}],
+ "max_steps": 8, "timeout": 120}

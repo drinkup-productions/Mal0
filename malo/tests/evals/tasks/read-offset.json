@@ -1,0 +1,5 @@
+{"id": "read-offset", "tag": ["core"],
+ "prompt": "big.txt has 300 numbered lines. What text is on line 250?",
+ "setup_generated": [{"path": "big.txt", "kind": "numbered_lines", "count": 300}],
+ "checks": [{"kind": "response_contains", "value": "line-250"}],
+ "max_steps": 5, "timeout": 120}
