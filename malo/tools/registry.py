@@ -1,9 +1,11 @@
 """Tool specs, dispatch and the confirm set."""
-from . import android as atools, core, mcp, selfdev as sdev, vision
+from . import android as atools, core, input as itools, mcp, selfdev as sdev, skills as stools, vision
+from ..core import skills
 from ..platform import current
 
 CONFIRM = {"write", "edit", "bash"}
-DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window"}
+DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
+                "mouse_move", "click", "scroll", "key", "type_text"}
 
 IMPL = {
     "read": core.read, "tail": core.tail, "write": core.write, "edit": core.edit,
@@ -11,9 +13,13 @@ IMPL = {
     "undo": core.undo, "undo_list": core.undo_list, "journal": core.journal,
     "screen_shot": vision.screen_shot, "list_windows": vision.list_windows,
     "focus_window": vision.focus_window, "notify": vision.notify,
+    "mouse_move": itools.mouse_move, "click": itools.click, "scroll": itools.scroll,
+    "key": itools.key, "type_text": itools.type_text,
     "open_app": atools.open_app, "list_apps": atools.list_apps,
     "code_grep": sdev.code_grep, "run_tests": sdev.run_tests,
     "propose": sdev.propose, "apply": sdev.apply, "proposals": sdev.proposals,
+    "write_skill": stools.write_skill, "list_skills": stools.list_skills,
+    "reload_skills": stools.reload_skills,
 }
 
 
@@ -62,6 +68,17 @@ CORE_SPECS = [
           {"hwnd": {"type": "integer"}}, ["hwnd"]),
     _spec("notify", "Raise a desktop notification.",
           {"title": {"type": "string"}, "text": {"type": "string"}}, ["title"]),
+    _spec("mouse_move", "Move the real cursor to x, y.",
+          {"x": {"type": "integer"}, "y": {"type": "integer"}}, ["x", "y"]),
+    _spec("click", "Click the mouse, optionally at x, y first.",
+          {"x": {"type": "integer"}, "y": {"type": "integer"},
+           "button": {"type": "string", "description": "left, right or middle."},
+           "double": {"type": "boolean"}}, []),
+    _spec("scroll", "Scroll the wheel. Positive is up.", {"amount": {"type": "integer"}}, []),
+    _spec("key", "Press keys, space separated, e.g. 'ctrl s' or 'enter'.",
+          {"keys": {"type": "string"}}, ["keys"]),
+    _spec("type_text", "Type a string into the focused window.",
+          {"text": {"type": "string"}}, ["text"]),
     _spec("code_grep", "Regex search over your own source. Read-only.",
           {"pattern": {"type": "string"}, "glob": {"type": "string"},
            "limit": {"type": "integer"}}, ["pattern"]),
@@ -73,6 +90,10 @@ CORE_SPECS = [
     _spec("apply", "Install a proposal, snapshot originals, run tests, revert on failure.",
           {"pid": {"type": "string"}}, ["pid"]),
     _spec("proposals", "List pending proposals.", {}, []),
+    _spec("write_skill", "Create or replace a skill module defining SPECS and its functions.",
+          {"name": {"type": "string"}, "code": {"type": "string"}}, ["name", "code"]),
+    _spec("list_skills", "List installed skills and any that failed to load.", {}, []),
+    _spec("reload_skills", "Reload skills from disk.", {}, []),
 ]
 
 ANDROID_SPECS = [
@@ -85,7 +106,7 @@ ANDROID_SPECS = [
 
 def all_specs():
     name = current().name
-    specs = list(CORE_SPECS)
+    specs = list(CORE_SPECS) + skills.specs()
     if name == "android":
         specs += ANDROID_SPECS
     if name != "windows":
@@ -97,6 +118,8 @@ def run(name, args):
     try:
         if name in IMPL:
             return IMPL[name](**(args or {}))
+        if name in skills.FUNCS:
+            return skills.call(name, args or {})
         if "__" in name:
             return mcp.call(name, args or {})
         return {"error": "unknown tool " + name}

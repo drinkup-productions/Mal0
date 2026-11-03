@@ -5,12 +5,8 @@ import signal
 import sys
 import threading
 
-
-from .core import log as _log, personas, provider, runtime
+from .core import log as _log, personas, provider, runtime, skills
 from .tools import mcp
-from .core import memory
-from malo.core import runtime
-
 
 
 def main():
@@ -20,11 +16,11 @@ def main():
 
     ap = argparse.ArgumentParser(prog="malo")
     ap.add_argument("--server", action="store_true", help="headless, no window")
+    ap.add_argument("--web", action="store_true", help="serve the web front end")
     ap.add_argument("--no-tray", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--webview", action="store_true")
-    ap.add_argument("--web", action="store_true")
     args = ap.parse_args()
 
     rt = runtime.Runtime()
@@ -34,6 +30,7 @@ def main():
 
     threading.Thread(target=mcp.start_all, daemon=True).start()
     personas.save()
+    skills.load_all()
     _log.log("start platform=%s persona=%s"
              % (rt.platform.name, personas.active(rt.cfg)))
 
@@ -44,7 +41,7 @@ def main():
         mcp.stop_all()
         rt.audio.stop_all()
         return
-        
+
     if args.web:
         from .web.server import serve
         return serve(rt, args.port)
@@ -64,6 +61,7 @@ def selftest(rt):
     print("workspace:", rt.cfg.get("workspace"))
     print("base url :", rt.cfg.get("base_url"))
     print("personas :", ", ".join(personas.PERSONAS))
+    print("skills   :", len(skills.specs()))
     print("models   :", provider.build(rt.cfg).models() or "(none)")
     print("mcp      :", mcp.status())
     for d in (rt.paths.output, rt.paths.sfx_dir, rt.paths.personas_dir):

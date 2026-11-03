@@ -231,6 +231,71 @@ class Windows(Platform):
         k32.GetTickCount64.restype = ctypes.c_ulonglong
         return max(0.0, (k32.GetTickCount64() - li.dwTime) / 1000.0)
 
+    # ---- input -------------------------------------------------------
+    def _vk(self, name):
+        n = str(name).lower()
+        table = {"enter": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B,
+                 "space": 0x20, "backspace": 0x08, "delete": 0x2E,
+                 "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+                 "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
+                 "ctrl": 0x11, "shift": 0x10, "alt": 0x12, "win": 0x5B}
+        if n in table:
+            return table[n]
+        if len(n) == 1:
+            return ctypes.windll.user32.VkKeyScanW(ord(n.upper())) & 0xFF
+        return None
+
+    def mouse_move(self, x, y):
+        return bool(ctypes.windll.user32.SetCursorPos(int(x), int(y)))
+
+    def mouse_click(self, x=None, y=None, button="left", double=False):
+        u32 = ctypes.windll.user32
+        if x is not None and y is not None:
+            u32.SetCursorPos(int(x), int(y))
+        pair = {"right": (0x0008, 0x0010), "middle": (0x0020, 0x0040)}.get(
+            str(button).lower(), (0x0002, 0x0004))
+        for _ in range(2 if double else 1):
+            u32.mouse_event(pair[0], 0, 0, 0, 0)
+            u32.mouse_event(pair[1], 0, 0, 0, 0)
+        return True
+
+    def mouse_scroll(self, amount):
+        ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(amount) * 120, 0)
+        return True
+
+    def key_press(self, keys):
+        u32 = ctypes.windll.user32
+        codes = [self._vk(k) for k in str(keys).replace("+", " ").split()]
+        codes = [c for c in codes if c]
+        if not codes:
+            return False
+        for c in codes:
+            u32.keybd_event(c, 0, 0, 0)
+        for c in reversed(codes):
+            u32.keybd_event(c, 0, 0x0002, 0)
+        return True
+
+    def type_text(self, text):
+        u32 = ctypes.windll.user32
+        k32 = ctypes.windll.kernel32
+        buf = ctypes.create_unicode_buffer(str(text))
+        size = ctypes.sizeof(buf)
+        u32.OpenClipboard(None)
+        try:
+            u32.EmptyClipboard()
+            h = k32.GlobalAlloc(0x0042, size)
+            p = k32.GlobalLock(h)
+            ctypes.memmove(p, buf, size)
+            k32.GlobalUnlock(h)
+            u32.SetClipboardData(13, h)
+        finally:
+            u32.CloseClipboard()
+        u32.keybd_event(0x11, 0, 0, 0)
+        u32.keybd_event(0x56, 0, 0, 0)
+        u32.keybd_event(0x56, 0, 0x0002, 0)
+        u32.keybd_event(0x11, 0, 0x0002, 0)
+        return True
+
     def make_tray(self):
         return PystrayTray()
 
