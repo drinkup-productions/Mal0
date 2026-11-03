@@ -8,7 +8,7 @@ import time
 from . import events as E, ledger, log as _log, memory, presence, prompt, provider
 from ..tools import registry
 
-MAX_STEPS = 16
+MAX_STEPS = 0  # 0 = no round cap
 
 
 class Engine:
@@ -36,7 +36,8 @@ class Engine:
     def run(self, messages, model, platform_name="windows", max_steps=MAX_STEPS):
         provider.set_model(model)
         presence.nudge(warmth=0.05)
-        self.deadline = time.time() + float(self.cfg.get("turn_budget") or 240)
+        budget = float(self.cfg.get("turn_budget") or 0)
+        self.deadline = time.time() + budget if budget > 0 else 0.0
         self._last_sig, self._reps = None, 0
         prov = provider.build(self.cfg)
         last_user = next((m["content"] for m in reversed(messages)
@@ -60,7 +61,9 @@ class Engine:
                                  daemon=True).start()
 
     def _loop(self, convo, prov, max_steps, out):
-        for _ in range(max_steps):
+        rounds = 0
+        while not max_steps or rounds < max_steps:
+            rounds += 1
             if self.deadline and time.time() > self.deadline:
                 self.bus.emit(E.ev(E.ERROR, text="turn budget exceeded"))
                 return
@@ -140,4 +143,5 @@ class Engine:
                 self.bus.emit(E.ev(E.TOOL_RESULT, ok=ok, text=json.dumps(result)[:600]))
                 convo.append({"role": "tool", "tool_call_id": c["id"],
                               "content": json.dumps(result)[:6000]})
-        self.bus.emit(E.ev(E.ERROR, text="stopped after %d rounds" % max_steps))
+        if max_steps:
+            self.bus.emit(E.ev(E.ERROR, text="stopped after %d rounds" % max_steps))

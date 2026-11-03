@@ -534,6 +534,13 @@ class App:
             self.cfg["model"] = want
             config.save()
         self.persona_changed(pid, want, True, personas.greeting(pid))
+        
+        # Track the persona change
+        try:
+            from ..core import evolution
+            evolution.track_mode_usage(pid)
+        except Exception as e:
+            print(f"Failed to track persona usage: {e}")
 
     def persona_changed(self, pid, want, ok, greeting):
         self.persona_var.set(pid)
@@ -625,12 +632,12 @@ class App:
             return
         if kind == "selfdev":
             brief = autonomy.SELFDEV_BRIEF
-            steps = 14
+            steps = 0
             tail = ("Work alone. Read before you write. Propose, then run the tests. "
                     "If the tests fail, say what broke and stop.")
         else:
             brief = (self.cfg.get("wake_brief") or "").strip() or autonomy.DEFAULT_BRIEF
-            steps = 3
+            steps = 0
             tail = ("Reply in one sentence. Do not describe tools or list windows. "
                     "If nothing needs attention, reply exactly: nothing")
         self._ins("[wake] %s\n" % reason, "sys")

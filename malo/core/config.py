@@ -43,7 +43,7 @@ DEFAULT_CFG = {
     "autonomy_cooldown_secs": 1800,
     "autonomy_max_per_day": 12,
     "wake_brief": "",
-    "turn_budget": 240,
+    "turn_budget": 0,
     "tool_timeout": 120,
     "presence": True,
     "presence_min_gap": 600,
@@ -63,6 +63,7 @@ _paths = None
 PRESETS = {"local": "http://127.0.0.1:1234/v1",
            "freellmapi": "http://127.0.0.1:3001/v1",
            "custom": ""}
+
 
 def paths():
     global _paths

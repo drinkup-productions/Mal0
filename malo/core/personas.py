@@ -110,6 +110,10 @@ def active(cfg):
     return pid if pid in PERSONAS else "malo"
 
 
+def brief():
+    return [{"id": pid, "label": p.get("label") or pid} for pid, p in PERSONAS.items()]
+
+
 def dir_for(pid, create=True):
     d = os.path.join(paths().personas_dir, pid)
     if create:
@@ -131,8 +135,10 @@ def jaw_image(pid, name):
     return p if p and os.path.isfile(p) else None
 
 
-def greeting(cfg):
-    pid = active(cfg)
+def greeting(who):
+    pid = who if isinstance(who, str) else active(who)
+    if pid not in PERSONAS:
+        pid = "malo"
     gs = PERSONAS[pid].get("greetings", [])
     if not gs:
         return ""
