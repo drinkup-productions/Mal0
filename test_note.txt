@@ -1,0 +1,1 @@
+MalO can now modify her own code and make herself more alive, as per user request. The personas.py file was updated to include this capability in all persona definitions.

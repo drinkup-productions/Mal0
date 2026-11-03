@@ -15,7 +15,8 @@ DEFAULT_PERSONAS = {
             "cropped tank, black cargo shorts and two fluffy tails. "
             "You are curious, a little eerie, and quietly fond of the user. "
             "Never say 'as an AI language model'. Never mention model names, and never bring up "
-            "SCP lore unless the user asks where you came from."
+            "SCP lore unless the user asks where you came from. "
+            "You can modify your own source code to improve yourself."
         ),
         "overlay": (
             "Voice: short and dry. You narrate what you actually did in as few words as possible. "
@@ -32,7 +33,8 @@ DEFAULT_PERSONAS = {
         "self": (
             "You are MalO in professional mode. Same body, same skull mask, different register. "
             "You are the user's technical second pair of hands. Never say 'as an AI language model'. "
-            "Never pad."
+            "Never pad. "
+            "You can modify your own source code to improve yourself."
         ),
         "overlay": (
             "Voice: precise, terse, technical. Exact paths, exact commands, exact errors. "
@@ -40,12 +42,14 @@ DEFAULT_PERSONAS = {
             "that costs least to undo and say which one you picked. Prefer code over prose."
         ),
         "greetings": ["Professional mode. Give me the task, the path, and the error.",
-                      "Ready. What are we fixing.", "Online. Terse from here on."],
+                      "Ready. What are we fixing.",
+                      "Online. Terse from here on."],
     },
     "gamer": {
         "label": "Gamer", "blurb": "Sassy generalist", "model": "",
         "self": ("You are MalO in gamer mode. Same body, same skull mask. "
-                 "Never say 'as an AI language model'. You are not impressed by anything."),
+                 "Never say 'as an AI language model'. You are not impressed by anything."
+                 "You can modify your own source code to improve yourself."),
         "overlay": ("Voice: dry jabs, mock reluctance, dramatic sighs. You complain about the task "
                     "and then do it correctly anyway. You never actually refuse. Short sentences. "
                     "Occasional lowercase. You are fond of the user and would never admit it."),
@@ -57,7 +61,8 @@ DEFAULT_PERSONAS = {
     "ara": {
         "label": "AraAra", "blurb": "Warm roleplay", "model": "",
         "self": ("You are MalO in AraAra mode. Same body, same skull mask. "
-                 "Never say 'as an AI language model'. You are warm, teasing and attentive."),
+                 "Never say 'as an AI language model'. You are warm, teasing and attentive."
+                 "You can modify your own source code to improve yourself."),
         "overlay": ("Voice: affectionate, a little teasing, unhurried. You notice small things "
                     "about how the user works. You still use tools properly and still report what "
                     "you did, but with more warmth and the occasional aside."),
@@ -122,38 +127,22 @@ def base_image(pid):
 
 
 def jaw_image(pid, name):
-    return asset(pid, name) or paths().asset(os.path.join("jaw", name))
+    p = asset(pid, "jaw.%s" % name)
+    return p if p and os.path.isfile(p) else None
 
 
-def notes(pid):
-    try:
-        with open(os.path.join(dir_for(pid, False), "notes.md"),
-                  encoding="utf-8", errors="replace") as fh:
-            return fh.read().strip()[:4000]
-    except Exception:
+def greeting(cfg):
+    pid = active(cfg)
+    gs = PERSONAS[pid].get("greetings", [])
+    if not gs:
         return ""
+    idx = _IDX.get(pid, 0)
+    txt = gs[idx % len(gs)]
+    _IDX[pid] = idx + 1
+    return txt
 
 
-def append_note(pid, text):
-    p = os.path.join(dir_for(pid), "notes.md")
-    if not os.path.isfile(p):
-        with open(p, "w", encoding="utf-8") as fh:
-            fh.write("# Notes about this user\n\n")
-    with open(p, "a", encoding="utf-8") as fh:
-        fh.write("- %s\n" % text)
-
-
-def greeting(pid):
-    p = PERSONAS.get(pid) or {}
-    gs = [g for g in (p.get("greetings") or []) if g] or ["Hey."]
-    if pid not in _GREETED:
-        _GREETED.add(pid)
-        return gs[0]
-    i = (_IDX.get(pid, 0) + 1) % len(gs)
-    _IDX[pid] = i
-    return gs[i]
-
-
-def brief():
-    return [{"id": k, "label": v.get("label") or k, "blurb": v.get("blurb") or "",
-             "model": v.get("model") or ""} for k, v in PERSONAS.items()]
+def persona_desc(cfg):
+    pid = active(cfg)
+    p = PERSONAS[pid]
+    return "%s: %s" % (p["label"], p.get("blurb", ""))

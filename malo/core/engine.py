@@ -1,13 +1,12 @@
 """Headless agent loop. Emits to a Bus; never imports a UI."""
+import concurrent.futures
 import itertools
 import json
 import threading
-from . import memory
-from ..tools import registry
-from . import events as E, ledger, log as _log, presence, prompt, provider
-#from . core import autonomy
-import concurrent.futures
 import time
+
+from . import events as E, ledger, log as _log, memory, presence, prompt, provider
+from ..tools import registry
 
 MAX_STEPS = 16
 
@@ -68,8 +67,8 @@ class Engine:
             if self.stop.is_set():
                 return
             text, calls, usage = "", {}, None
-            for chunk in prov.stream(convo, registry.all_specs() if self.cfg.get("tools", True) else [],
-                                     self.stop):
+            specs = registry.all_specs() if self.cfg.get("tools", True) else []
+            for chunk in prov.stream(convo, specs, self.stop):
                 if chunk.get("usage"):
                     usage = chunk["usage"]
                 d = ((chunk.get("choices") or [{}])[0]).get("delta") or {}
