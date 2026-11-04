@@ -4,12 +4,22 @@ import threading
 import tkinter as tk
 import time
 
-from ...core import config, feedback, personas, profiles
+from ...core import config, feedback, perm, personas, profiles
 from ...tools import mcp
 from . import theme
 
 BG, PANEL, BORDER, FG = theme.BG, theme.PANEL, theme.BORDER, theme.FG
 MUTED, ACCENT = theme.MUTED, theme.ACCENT
+
+PERM_LABEL = {
+    "read": "read files, windows, screenshots",
+    "write": "write, edit, undo, remember, skills",
+    "shell": "bash and run_tests",
+    "input": "mouse, keyboard, uia",
+    "system": "notify, open_app",
+    "network": "MCP tools and web",
+    "selfedit": "propose and apply self-edits",
+}
 
 
 def _btn(parent, text, cmd):
@@ -27,7 +37,7 @@ def open_settings(app):
     app.settings_win = w
     w.title("MalO - settings")
     w.configure(bg=BG)
-    w.geometry("560x1080")
+    w.geometry("560x1260")
     w.transient(app.root)
 
     tk.Label(w, text="Settings", bg=BG, fg=FG,
@@ -95,6 +105,7 @@ def open_settings(app):
     tk.Label(erow, text=" minutes", bg=BG, fg=MUTED,
              font=("Segoe UI", 8)).pack(side="left")
 
+    _perm_section(w, app)
     _profiles_section(w, app)
 
     sfx_v = tk.BooleanVar(value=bool(app.cfg.get("sfx", True)))
@@ -209,6 +220,28 @@ def open_settings(app):
     _btn(brow, "Log", lambda: app.rt.platform.open_path(app.rt.paths.log)
          ).pack(side="left", padx=6)
     _btn(brow, "Memory", lambda: open_memory(app))
+
+
+def _perm_section(w, app):
+    tk.Label(w, text="Permissions", bg=BG, fg=FG,
+             font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 0))
+    tk.Label(w, text="One switch per class. Off means the tool refuses outright.",
+             bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14)
+    grants = app.cfg.get("perm") or {}
+    for cls, label in PERM_LABEL.items():
+        v = tk.BooleanVar(value=bool(grants.get(cls, perm.DEFAULTS.get(cls, False))))
+
+        def toggle(c=cls, v=v):
+            g = dict(app.cfg.get("perm") or {})
+            g[c] = bool(v.get())
+            app.cfg["perm"] = g
+            config.save()
+            app.say("%s %s" % (c, "on" if v.get() else "off"), 1200)
+
+        tk.Checkbutton(w, text="%s - %s" % (cls, label), variable=v, command=toggle,
+                       bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
+                       activeforeground=FG, font=("Segoe UI", 9), anchor="w",
+                       ).pack(fill="x", padx=14)
 
 
 def _profiles_section(w, app):

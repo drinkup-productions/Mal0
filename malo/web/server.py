@@ -7,8 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from ..core import (config, engine, events as E, feedback, personas, profiles,
-                    provider)
+from ..core import (config, engine, events as E, feedback, perm, personas,
+                    profiles, provider)
 from ..core.log import log
 from .page import PAGE
 
@@ -68,6 +68,11 @@ def _treat_spec():
     return (personas.PERSONAS.get(personas.active(config.CFG)) or {}).get("treat") or {}
 
 
+def _grants():
+    g = config.CFG.get("perm") or {}
+    return {k: bool(g.get(k, v)) for k, v in perm.DEFAULTS.items()}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "malo"
 
@@ -119,6 +124,7 @@ class Handler(BaseHTTPRequestHandler):
                 "profiles": [{"name": r["name"], "active": r["active"]}
                              for r in profiles.rows()],
                 "profile": profiles.active_name(),
+                "perm": _grants(),
             })
         if u.path == "/img":
             name = (qs.get("name") or [""])[0]
@@ -213,6 +219,16 @@ class Handler(BaseHTTPRequestHandler):
             broadcast(E.ev(E.STATE))
             return self._json({"ok": True, "profile": r["profile"],
                                "workspace": r["workspace"]})
+        if u.path == "/perm":
+            c = body.get("cls") or ""
+            if c not in perm.DEFAULTS:
+                return self._json({"ok": False, "error": "unknown class"})
+            g = dict(config.CFG.get("perm") or {})
+            g[c] = bool(body.get("on"))
+            config.CFG["perm"] = g
+            config.save()
+            broadcast(E.ev(E.STATE))
+            return self._json({"ok": True, "perm": _grants()})
         if u.path == "/model":
             v = body.get("value") or ""
             if v:

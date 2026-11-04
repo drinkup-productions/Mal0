@@ -9,11 +9,14 @@ body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans
  display:flex;flex-direction:column;height:100vh}
 header{display:flex;gap:6px;padding:8px;background:var(--pan);border-bottom:1px solid var(--bord);
  align-items:center;flex-wrap:wrap}
+#perm{display:flex;gap:12px;flex-wrap:wrap;padding:5px 9px;background:var(--pan);
+ border-bottom:1px solid var(--bord);font-size:12px;color:var(--mut)}
+#perm label{display:flex;gap:4px;align-items:center}
 select,button,input,textarea{font:inherit;color:var(--fg);background:var(--pan);
  border:1px solid var(--bord);border-radius:8px;padding:7px 10px}
 button{background:var(--acc);border-color:var(--acc);font-weight:600}
 button.ghost{background:var(--pan);border-color:var(--bord);font-weight:400}
-#av{height:38vh;max-height:340px;object-fit:contain;display:block;margin:0 auto;padding:6px}
+#av{height:34vh;max-height:320px;object-fit:contain;display:block;margin:0 auto;padding:6px}
 #log{flex:1;overflow-y:auto;padding:8px 10px;white-space:pre-wrap;word-wrap:break-word}
 .u{background:var(--acc);color:#fff;border-radius:10px;padding:6px 9px;margin:6px 0 6px auto;
  max-width:85%;width:fit-content}
@@ -34,6 +37,7 @@ footer{display:flex;gap:6px;padding:8px;background:var(--pan);border-top:1px sol
  <button class="ghost" id="treat">treat</button>
  <button class="ghost" id="stop">stop</button>
 </header>
+<div id="perm"></div>
 <img id="av" alt="">
 <div id="log"></div>
 <div id="bar"><span id="bartxt"></span><span style="flex:1"></span>
@@ -60,6 +64,21 @@ function paint(){
   $("av").src = "/img?t=" + encodeURIComponent(T) + "&name=" + encodeURIComponent(name);
 }
 
+function paintPerm(p){
+  const box = $("perm"); box.innerHTML = "";
+  for (const k of Object.keys(p)){
+    const l = document.createElement("label");
+    const c = document.createElement("input");
+    c.type = "checkbox"; c.checked = !!p[k];
+    c.onchange = async () => {
+      const r = await api("/perm", {cls: k, on: c.checked});
+      if (r.perm) paintPerm(r.perm);
+    };
+    l.appendChild(c); l.appendChild(document.createTextNode(k));
+    box.appendChild(l);
+  }
+}
+
 async function load(){
   const s = await (await fetch("/state?t=" + encodeURIComponent(T))).json();
   $("pro").innerHTML = "";
@@ -73,6 +92,7 @@ async function load(){
   $("mod").innerHTML = "";
   for (const m of s.models){ const o = document.createElement("option");
     o.value = m; o.textContent = m; if (m === s.model) o.selected = true; $("mod").appendChild(o); }
+  if (s.perm) paintPerm(s.perm);
   stage = s.stage; baseImg = s.active; paint();
 }
 
