@@ -20,14 +20,31 @@ except Exception:
     websockets = None
 
 RECONNECT = 3.0
+START_TIMEOUT = 30.0
+NOISY = ("waiting_on_input",)
 
 
 def _safe(name):
     return "".join(c if c.isalnum() or c in "_-" else "_" for c in str(name))
 
 
+def _text_of(content):
+    """Assistant content arrives as a string or a list of content blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        out = []
+        for b in content:
+            if isinstance(b, dict):
+                if b.get("type") == "text" or "text" in b:
+                    out.append(str(b.get("text") or ""))
+            elif isinstance(b, str):
+                out.append(b)
+        return "".join(out)
+    return "" if content is None else str(content)
+
+
 def _tool_specs():
-    """OpenAI-shaped registry specs -> Letta external tool definitions."""
     from ..tools import registry
     tools, names = [], {}
     for s in registry.all_specs():
@@ -58,11 +75,19 @@ def _persona_blocks(cfg):
 
 def _system(cfg):
     return (
-        "You are MalO, a program living on the user's Windows machine. You operate the "
-        "desktop through tools: files, shell, windows, screenshots, mouse and keyboard. "
-        "Look before you touch. Report what you did in a sentence. The newest user "
-        "message always wins over older unfinished work. File tools are jailed to the "
-        "workspace and the repo.\n\nWorkspace: %s\nSource repo: %s"
+        "You are MalO, a program living on the user's Windows machine.\n\n"
+        "You act with tools. Prose on its own is a failure - if the user asks for "
+        "something done, call the tool that does it.\n"
+        "- To create or overwrite a file, call write. To change one, call edit.\n"
+        "- Do not paste a shell command or a code fence instead of running it.\n"
+        "- To look at a file, call read. To see the screen, call list_windows or "
+        "screen_shot.\n"
+        "- After every tool result, read it. If it reports an error, or says the user "
+        "skipped the call, say so plainly.\n"
+        "- Never claim a file exists unless a write or edit result confirmed its path.\n"
+        "- The newest user message always wins over older unfinished work.\n\n"
+        "File tools are jailed to the workspace and the repo.\n"
+        "Workspace: %s\nSource repo: %s"
         % (cfg.get("workspace"), cfg.get("repo") or "(unset)")
     )
 
@@ -74,25 +99,31 @@ class Chat:
         self.pending = {}
         self._ids = itertools.count(1)
         self._names = {}
+        self._emitted = {}
+        
+        self._answered = set()
+        self._done = {}
         self._loop = None
         self._ws = None
         self._runtime = None
         self._thread = None
+        self._reader = None
+        self._started = None
         self._ready = threading.Event()
         self._closed = threading.Event()
-        self._seen = set()
 
     # -- lifecycle -----------------------------------------------------
-    def start(self, timeout=25):
+    def start(self, timeout=START_TIMEOUT + 10):
         if websockets is None:
             self.bus.emit(E.ev(E.ERROR, text="websockets not installed"))
             return False
         if self._thread and self._thread.is_alive():
-            return self._ready.is_set()
+            return self._runtime is not None
         self._thread = threading.Thread(target=self._thread_main, daemon=True,
                                         name="letta")
         self._thread.start()
-        return self._ready.wait(timeout)
+        self._ready.wait(timeout)
+        return self._runtime is not None
 
     def _thread_main(self):
         self._loop = asyncio.new_event_loop()
@@ -104,19 +135,30 @@ class Chat:
             self.bus.emit(E.ev(E.ERROR, text="letta: %s: %s" % (type(exc).__name__, exc)))
         finally:
             self._ready.set()
-            self._loop.close()
+            try:
+                self._loop.close()
+            except Exception:
+                pass
 
     async def _main(self):
+        url = self.cfg.get("letta_url") or "ws://127.0.0.1:4500"
         while not self._closed.is_set():
             try:
-                async with websockets.connect(
-                        self.cfg.get("letta_url") or "ws://127.0.0.1:4500",
-                        max_size=None) as ws:
+                async with websockets.connect(url, max_size=None) as ws:
                     self._ws = ws
-                    if not await self._start_runtime():
+                    self._started = asyncio.Event()
+                    self._answered.clear()
+                    self._reader = asyncio.create_task(self._pump(ws))
+                    try:
+                        ok = await self._start_runtime()
+                    finally:
+                        self._ready.set()
+                    if not ok:
+                        self._reader.cancel()
                         return
-                    self._ready.set()
-                    await self._pump(ws)
+                    await self._reader
+            except asyncio.CancelledError:
+                return
             except Exception as exc:
                 if self._closed.is_set():
                     return
@@ -129,6 +171,8 @@ class Chat:
 
     def close(self):
         self._closed.set()
+        if self._reader and self._loop:
+            self._loop.call_soon_threadsafe(self._reader.cancel)
         if self._ws and self._loop:
             asyncio.run_coroutine_threadsafe(self._abort(), self._loop)
 
@@ -150,6 +194,7 @@ class Chat:
     # -- runtime -------------------------------------------------------
     async def _start_runtime(self):
         tools, self._names = _tool_specs()
+        self.bus.emit(E.ev(E.THINK, text="registering %d tools" % len(tools)))
         pid, blocks = _persona_blocks(self.cfg)
         agent_id = (self.cfg.get("letta_agents") or {}).get(pid)
         frame = {
@@ -164,18 +209,25 @@ class Chat:
             frame["agent_id"] = agent_id
             frame["create_conversation"] = {"body": {}}
         else:
-            frame["create_agent"] = {"body": {"name": "MalO " + pid,
-                                              "system": _system(self.cfg),
-                                              "memory_blocks": blocks}}
+            body = {"name": "MalO " + pid,
+                    "system": _system(self.cfg),
+                    "memory_blocks": blocks,
+                    "model_settings": {
+                        "temperature": float(self.cfg.get("letta_temperature") or 0.3)}}
+            model = (self.cfg.get("letta_model") or "").strip()
+            if model:
+                body["model"] = model
+                body["llm_config"] = {"model": model.split("/")[-1],
+                                      "model_endpoint_type": "lmstudio_openai"}
+            frame["create_agent"] = {"body": body}
             frame["create_conversation"] = {"body": {}}
         await self._ws.send(json.dumps(frame))
-        # the response is handled in _pump; wait for the runtime
-        for _ in range(400):
-            if self._runtime:
-                return True
-            await asyncio.sleep(0.05)
-        self.bus.emit(E.ev(E.ERROR, text="letta runtime_start timed out"))
-        return False
+        try:
+            await asyncio.wait_for(self._started.wait(), START_TIMEOUT)
+        except asyncio.TimeoutError:
+            self.bus.emit(E.ev(E.ERROR, text="letta runtime_start timed out"))
+            return False
+        return self._runtime is not None
 
     # -- turn ----------------------------------------------------------
     def send(self, text):
@@ -191,9 +243,8 @@ class Chat:
             "messages": [{"role": "user", "content": text,
                           "client_message_id": "m%d" % int(time.time() * 1000)}],
             "exclude_interactive_tools": True,
+            "client_tool_allowlist": sorted(self._names),
         }
-        if not self.cfg.get("letta_builtin_tools"):
-            payload["client_tool_allowlist"] = []
         await self._ws.send(json.dumps({"type": "input", "runtime": self._runtime,
                                         "payload": payload}))
 
@@ -213,19 +264,23 @@ class Chat:
 
         if t == "runtime_start_response":
             if not msg.get("success"):
-                self.bus.emit(E.ev(E.ERROR, text="letta start failed: %s" % msg.get("error")))
+                self.bus.emit(E.ev(E.ERROR,
+                                   text="letta start failed: %s" % msg.get("error")))
                 self._runtime = None
-                return
-            self._runtime = msg.get("runtime")
-            agent = msg.get("agent") or {}
-            aid = agent.get("id")
-            if aid:
-                pid = personas.active(self.cfg)
-                agents = dict(self.cfg.get("letta_agents") or {})
-                if agents.get(pid) != aid:
-                    agents[pid] = aid
-                    self.cfg["letta_agents"] = agents
-                    config.save()
+            else:
+                self._runtime = msg.get("runtime")
+                agent = msg.get("agent") or {}
+                log("letta agent tools: %s" % (agent.get("tools"),))
+                aid = agent.get("id")
+                if aid:
+                    pid = personas.active(self.cfg)
+                    agents = dict(self.cfg.get("letta_agents") or {})
+                    if agents.get(pid) != aid:
+                        agents[pid] = aid
+                        self.cfg["letta_agents"] = agents
+                        config.save()
+            if self._started:
+                self._started.set()
             return
 
         if t == "stream_delta":
@@ -233,38 +288,64 @@ class Chat:
                 self.bus.emit(E.ev(E.ERROR, text=str(d.get("message") or "loop error")))
                 return
             if mt == "stop_reason":
+                log("letta stop: %s" % d.get("stop_reason"))
                 if d.get("stop_reason") != "requires_approval":
+                    self._emitted.clear()
+                    self._done.clear()
                     self.bus.emit(E.ev(E.TURN, messages=[]))
                 return
             if mt == "assistant_message":
-                mid = d.get("id")
-                if mid in self._seen:
-                    return
-                body = d.get("content") or ""
-                if body:
-                    self._seen.add(mid)
-                    self.bus.emit(E.ev(E.DELTA, text=body))
+                self._emit_text(d)
                 return
-            if mt in ("tool_call", "tool_result", "status"):
-                if d.get("content"):
-                    self.bus.emit(E.ev(E.THINK, text=str(d["content"])[:300]))
+            if mt in ("tool_call", "tool_result"):
+                log("letta %s: %s" % (mt, json.dumps(d)[:500]))
+                body = _text_of(d.get("content"))
+                if body:
+                    self.bus.emit(E.ev(E.THINK, text=body[:300]))
+                return
+            log("letta delta %s: %s" % (mt, json.dumps(d)[:300]))
             return
 
         if t == "control_request":
+            log("letta CONTROL: %s" % json.dumps(msg)[:900])
             await self._approval(msg)
             return
 
         if t == "external_tool_call_request":
+            log("letta TOOLREQ: %s" % json.dumps(msg)[:400])
             asyncio.create_task(self._tool(msg))
             return
 
         if t == "update_loop_status":
             st = (msg.get("loop_status") or {}).get("status")
-            if st:
+            if st and st.lower() not in NOISY:
                 self.bus.emit(E.ev(E.THINK, text=st.lower()))
+            return
+
+        log("letta unhandled %s: %s" % (t, json.dumps(msg)[:400]))
+
+    def _emit_text(self, d):
+        """Emit only the part of this message that has not been emitted yet."""
+        mid = d.get("id") or "?"
+        full = _text_of(d.get("content"))
+        if not full:
+            return
+        already = self._emitted.get(mid, "")
+        if full == already:
+            return
+        if already and full.startswith(already):
+            new = full[len(already):]
+        else:
+            new = full
+        self._emitted[mid] = full
+        if new:
+            self.bus.emit(E.ev(E.DELTA, text=new))
 
     async def _approval(self, msg):
         rid = msg.get("request_id") or (msg.get("request") or {}).get("request_id")
+        if not rid or rid in self._answered:
+            return
+        self._answered.add(rid)
         req = msg.get("request") or {}
         name = req.get("tool_name") or req.get("tool") or "tool"
         args = req.get("input") or req.get("args") or {}
@@ -274,38 +355,31 @@ class Chat:
         self.bus.emit(E.ev(E.CONFIRM, id=pid, name=name, args=args))
         await asyncio.to_thread(slot["ev"].wait, 300)
         self.pending.pop(pid, None)
-        await self._ws.send(json.dumps({
-            "type": "input",
-            "runtime": self._runtime,
-            "payload": {"kind": "approval_response", "request_id": rid,
-                        "decision": {"behavior": "allow" if slot["ok"] else "deny",
-                                     "message": "approved" if slot["ok"] else "skipped"}},
-        }))
-
+        decision = {"behavior": "allow" if slot["ok"] else "deny",
+                    "message": "approved" if slot["ok"] else "skipped"}
+        payload = {"kind": "approval_response", "request_id": rid, "decision": decision}
+        log("letta approve -> %s %s %s" % (rid, decision["behavior"], json.dumps(args)[:200]))
+        try:
+            await self._ws.send(json.dumps({"type": "input",
+                                            "runtime": self._runtime,
+                                            "payload": payload}))
+        except Exception as exc:
+            log("letta approve send failed: %s" % exc)
     async def _tool(self, msg):
         name = self._names.get(msg.get("tool_name"), msg.get("tool_name"))
         args = msg.get("input") or {}
         from ..tools import registry
-        if self.cfg.get("confirm") and name in registry.CONFIRM:
-            pid = next(self._ids)
-            slot = {"ev": threading.Event(), "ok": False}
-            self.pending[pid] = slot
-            self.bus.emit(E.ev(E.CONFIRM, id=pid, name=name, args=args))
-            await asyncio.to_thread(slot["ev"].wait, 300)
-            self.pending.pop(pid, None)
-            if not slot["ok"]:
-                await self._respond(msg, {"note": "skipped by the user"}, True)
-                return
-        self.bus.emit(E.ev(E.TOOL, name=name, args=args))
-        tmo = int(self.cfg.get("tool_timeout") or 120)
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(registry.run, name, args), tmo)
-        except asyncio.TimeoutError:
-            result = {"error": "tool timed out after %ds" % tmo}
-        except Exception as exc:
-            result = {"error": "%s: %s" % (type(exc).__name__, exc)}
+        sig = name + "\x00" + json.dumps(args, sort_keys=True, default=str)
+        if sig in self._done:
+            log("letta duplicate %s" % name)
+            self.bus.emit(E.ev(E.TOOL_RESULT, ok=True, text="duplicate call - reused"))
+            await self._respond(msg, {"note": "this exact call already ran in this turn - "
+                                             "use the earlier result, do not repeat it",
+                                      "previous": self._done[sig]}, False)
+            return
         ok = "error" not in result
+        if ok:
+            self._done[sig] = result
         self.bus.emit(E.ev(E.TOOL_RESULT, ok=ok, text=json.dumps(result)[:600]))
         await self._respond(msg, result, not ok)
 

@@ -21,6 +21,8 @@ DEFAULT_CFG = {
     "letta": False,
     "letta_url": "ws://127.0.0.1:4500",
     "letta_mode": "standard",
+    "letta_model": "",
+    "letta_temperature": 0.3,
     "letta_builtin_tools": False,
     "letta_agents": {},
     # behaviour

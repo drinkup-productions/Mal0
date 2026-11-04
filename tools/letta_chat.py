@@ -1,6 +1,6 @@
 """Console chat through the Letta client with MalO's real tools and jail.
 
-Run from the repo root: python tools/letta_chat.py
+Run from the repo root: python tools/letta_chat.py [--ask]
 """
 import os
 import sys
@@ -10,12 +10,26 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from malo.core import config, events as E, letta, perm
+from malo.core import log as _log
+
+ASK = "--ask" in sys.argv
 
 
 def main():
+    root = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+                        "MalOAvatar")
+    os.makedirs(root, exist_ok=True)
+    _log.set_path(os.path.join(root, "malo.log"))
     config.load()
     config.CFG["perm"] = dict(perm.DEFAULTS)
+    config.CFG["workspace"] = os.path.expanduser("~\\workspace")
+    config.CFG["repo"] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.makedirs(config.CFG["workspace"], exist_ok=True)
+    print("workspace:", config.CFG["workspace"])
+    print("confirms:", "ask" if ASK else "auto-approve")
     bus = E.Bus()
+    chat = None
+    waiting = {"id": None, "name": "", "args": None}
 
     def handle(ev):
         t = ev.get("type")
@@ -30,8 +44,13 @@ def main():
         elif t == E.ERROR:
             print("\n!! %s" % ev.get("text"))
         elif t == E.CONFIRM:
-            a = input("\n  run %s %s ? [y/N] " % (ev.get("name"), ev.get("args")))
-            chat.approve(ev.get("id"), a.strip().lower().startswith("y"))
+            if ASK:
+                waiting["id"], waiting["name"], waiting["args"] = (
+                    ev.get("id"), ev.get("name"), ev.get("args"))
+                print("\n  CONFIRM %s %s - type y or n" % (ev.get("name"), ev.get("args")))
+            else:
+                print("\n  auto-approve %s" % ev.get("name"))
+                chat.approve(ev.get("id"), True)
         elif t == E.TURN:
             print()
 
@@ -52,6 +71,12 @@ def main():
                 line = input("\nyou> ")
             except EOFError:
                 break
+            if waiting["id"] is not None:
+                ok = line.strip().lower().startswith("y")
+                chat.approve(waiting["id"], ok)
+                waiting["id"] = None
+                print("  %s" % ("approved" if ok else "skipped"))
+                continue
             if not line.strip():
                 break
             if not chat.send(line):
