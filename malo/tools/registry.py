@@ -1,12 +1,13 @@
 """Tool specs, dispatch and the confirm set."""
 from . import (android as atools, core, input as itools, mcp, profiles as ptools,
-               selfdev as sdev, skills as stools, vision)
-from ..core import skills
+               selfdev as sdev, skills as stools, uia, vision)
+from ..core import config, perm, skills
 from ..platform import current
 
 CONFIRM = {"write", "edit", "bash"}
 DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
-                "mouse_move", "click", "scroll", "key", "type_text"}
+                "mouse_move", "click", "scroll", "key", "type_text",
+                "uia_tree", "uia_find", "uia_act"}
 
 IMPL = {
     "read": core.read, "tail": core.tail, "write": core.write, "edit": core.edit,
@@ -16,9 +17,11 @@ IMPL = {
     "focus_window": vision.focus_window, "notify": vision.notify,
     "mouse_move": itools.mouse_move, "click": itools.click, "scroll": itools.scroll,
     "key": itools.key, "type_text": itools.type_text,
+    "uia_tree": uia.tree, "uia_find": uia.find, "uia_act": uia.act,
     "open_app": atools.open_app, "list_apps": atools.list_apps,
     "code_grep": sdev.code_grep, "run_tests": sdev.run_tests,
     "propose": sdev.propose, "apply": sdev.apply, "proposals": sdev.proposals,
+    "discard": sdev.discard,
     "write_skill": stools.write_skill, "list_skills": stools.list_skills,
     "reload_skills": stools.reload_skills,
     "profile_list": ptools.profile_list, "profile_show": ptools.profile_show,
@@ -86,6 +89,19 @@ CORE_SPECS = [
           {"keys": {"type": "string"}}, ["keys"]),
     _spec("type_text", "Type a string into the focused window.",
           {"text": {"type": "string"}}, ["text"]),
+    _spec("uia_tree", "Dump the control tree of a window: index, role, name, class, rect. "
+                      "Indexes feed uia_act.",
+          {"hwnd": {"type": "integer", "description": "Window handle; omit for the foreground."},
+           "depth": {"type": "integer", "description": "1-8, default 3."},
+           "limit": {"type": "integer", "description": "Max elements, default 200."}}, []),
+    _spec("uia_find", "Find controls by name fragment. Use the returned index with uia_act.",
+          {"name": {"type": "string"},
+           "hwnd": {"type": "integer"}, "depth": {"type": "integer"},
+           "limit": {"type": "integer"}}, ["name"]),
+    _spec("uia_act", "Act on an element from the last uia_tree or uia_find.",
+          {"index": {"type": "integer"},
+           "action": {"type": "string", "description": "click, value, focus, keys or read."},
+           "value": {"type": "string"}}, []),
     _spec("code_grep", "Regex search over your own source. Read-only.",
           {"pattern": {"type": "string"}, "glob": {"type": "string"},
            "limit": {"type": "integer"}}, ["pattern"]),
@@ -95,8 +111,12 @@ CORE_SPECS = [
           {"title": {"type": "string"}, "rationale": {"type": "string"},
            "files": {"type": "object"}}, ["title", "rationale", "files"]),
     _spec("apply", "Install a proposal, snapshot originals, run tests, revert on failure.",
-          {"pid": {"type": "string"}}, ["pid"]),
+          {"pid": {"type": "string"},
+           "force": {"type": "boolean", "description": "Reapply despite drift or a prior apply."}},
+          ["pid"]),
     _spec("proposals", "List pending proposals.", {}, []),
+    _spec("discard", "Delete a proposal without applying it.",
+          {"pid": {"type": "string"}}, ["pid"]),
     _spec("write_skill", "Create or replace a skill module defining SPECS and its functions.",
           {"name": {"type": "string"}, "code": {"type": "string"}}, ["name", "code"]),
     _spec("list_skills", "List installed skills and any that failed to load.", {}, []),
@@ -133,6 +153,9 @@ def all_specs():
 
 def run(name, args):
     try:
+        if not perm.allowed(name, config.CFG):
+            return {"error": "permission denied: %s is a %s-class tool and %s is off"
+                    % (name, perm.cls(name), perm.cls(name))}
         if name in IMPL:
             return IMPL[name](**(args or {}))
         if name in skills.FUNCS:

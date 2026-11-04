@@ -1,37 +1,76 @@
+"""Memory behaviour. Owns its own MALO_DATA per test."""
 import os
-import sys
+import shutil
 import tempfile
-
-os.environ["MALO_DATA"] = tempfile.mkdtemp(prefix="malo-mem-")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import unittest
 
 from malo.core import config, memory
 
-config.reset()
-memory.close()
-assert memory.stats()["total"] == 0
+TMP = None
 
-a = memory.add("prefers the Helix editor", "user", 0.8)
-assert a
-assert memory.add("prefers the Helix editor", "user", 0.8) == a, "dedupe failed"
-assert memory.stats()["total"] == 1
 
-b = memory.add("workspace uses Python 3.15", "machine", 0.7)
-rows = memory.recall("what editor does he like")
-assert rows and rows[0]["id"] == a, "recall ranking failed"
+def setUpModule():
+    global TMP
+    TMP = tempfile.mkdtemp(prefix="malo-mem-")
+    config.reset()
+    memory.close()
 
-memory.set_pinned(b)
-rows = memory.recall("what editor")
-assert rows[0]["id"] == b, "pin did not float"
 
-assert len(memory.recall("editor", limit=1, budget=5)) == 1, "limit ignored"
+def tearDownModule():
+    memory.close()
+    os.environ.pop("MALO_DATA", None)
+    config.reset()
+    shutil.rmtree(TMP, ignore_errors=True)
 
-memory.add("prefers the Helix editor", "user", 0.8)
-assert memory.consolidate() >= 0
-assert memory.stats()["total"] == 2, "consolidate duplicated"
 
-assert memory.forget(mid=a) == 1
-assert memory.stats()["total"] == 1
-assert memory.forget(text="nothing here") == 0
+class Memory(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp(dir=TMP)
+        os.environ["MALO_DATA"] = self.d
+        config.reset()
+        config.load()
+        memory.close()
 
-print("memory ok")
+    def tearDown(self):
+        memory.close()
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_dedupe(self):
+        a = memory.add("prefers the Helix editor", "user", 0.8)
+        self.assertTrue(a)
+        self.assertEqual(memory.add("prefers the Helix editor", "user", 0.8), a)
+        self.assertEqual(memory.stats()["total"], 1)
+
+    def test_recall_ranks_the_match_first(self):
+        a = memory.add("prefers the Helix editor", "user", 0.8)
+        memory.add("workspace uses Python 3.15", "machine", 0.7)
+        rows = memory.recall("what editor does he like")
+        self.assertTrue(rows)
+        self.assertEqual(rows[0]["id"], a)
+
+    def test_pin_floats(self):
+        memory.add("prefers the Helix editor", "user", 0.8)
+        b = memory.add("workspace uses Python 3.15", "machine", 0.7)
+        memory.set_pinned(b, True)
+        self.assertEqual(memory.recall("what editor")[0]["id"], b)
+
+    def test_limit_and_budget(self):
+        for i in range(5):
+            memory.add("padding entry %d with some length to it" % i, "user", 0.5)
+        self.assertEqual(len(memory.recall("padding", limit=1, budget=5)), 1)
+
+    def test_consolidate_does_not_duplicate(self):
+        memory.add("prefers the Helix editor", "user", 0.8)
+        memory.add("workspace uses Python 3.15", "machine", 0.7)
+        self.assertGreaterEqual(memory.consolidate(), 0)
+        self.assertEqual(memory.stats()["total"], 2)
+
+    def test_forget(self):
+        a = memory.add("prefers the Helix editor", "user", 0.8)
+        self.assertEqual(memory.forget(mid=a), 1)
+        self.assertEqual(memory.stats()["total"], 0)
+        self.assertEqual(memory.forget(text="nothing here"), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

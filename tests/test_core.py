@@ -18,6 +18,8 @@ def setUpModule():
     os.environ["MALO_DATA"] = TMP
     config.reset()
     config.load()
+    memory.close()
+    config.CFG["perm"] = dict(perm.DEFAULTS)
     config.CFG["workspace"] = os.path.join(TMP, "ws")
     os.makedirs(config.CFG["workspace"], exist_ok=True)
     config.CFG["repo"] = os.path.join(TMP, "repo")
@@ -28,6 +30,7 @@ def setUpModule():
 
 
 def tearDownModule():
+    memory.close()
     if OLD:
         os.environ["MALO_DATA"] = OLD
     else:
@@ -35,10 +38,12 @@ def tearDownModule():
     config.reset()
     shutil.rmtree(TMP, ignore_errors=True)
 
+
 def _read(p):
     with open(p, encoding="utf-8") as fh:
         return fh.read()
-        
+
+
 class Jail(unittest.TestCase):
     def test_outside_refused(self):
         with self.assertRaises(ValueError):
@@ -164,17 +169,16 @@ class SelfDev(unittest.TestCase):
         res = selfdev.apply(out["proposal"])
         self.assertTrue(res["applied"])
         self.assertIn("return 3", _read(target))
-        
+
+
 class Schema(unittest.TestCase):
     def test_version_stamped(self):
-        from malo.core import memory
         memory.close()
         memory.conn()
         v = memory.conn().execute("PRAGMA user_version").fetchone()[0]
         self.assertEqual(v, memory.SCHEMA_VERSION)
 
     def test_migration_runs_once(self):
-        from malo.core import memory
         memory.close()
         memory.MIGRATIONS[999] = "CREATE TABLE IF NOT EXISTS probe_tbl (x INTEGER);"
         try:

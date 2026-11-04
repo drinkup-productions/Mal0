@@ -52,6 +52,13 @@ def _collect(ctrl, depth, limit):
     return rows, cache
 
 
+def _title(root):
+    try:
+        return root.Name or ""
+    except Exception:
+        return ""
+
+
 def tree(hwnd=None, depth=3, limit=200):
     try:
         root = _root(hwnd)
@@ -65,11 +72,7 @@ def tree(hwnd=None, depth=3, limit=200):
     with _LOCK:
         _CACHE[key] = cache
         _LAST["key"] = key
-    try:
-        title = root.Name
-    except Exception:
-        title = ""
-    return {"window": title, "count": len(rows),
+    return {"window": _title(root), "count": len(rows),
             "elements": "\n".join(rows) or "(no children)"}
 
 
@@ -96,8 +99,8 @@ def find(name=None, hwnd=None, depth=6, limit=1):
     with _LOCK:
         _CACHE[key] = cache
         _LAST["key"] = key
-    return {"found": True, "window": title, "matches": "\n".join(rows[i] for i in hits),
-            "index": hits[0]}
+    return {"found": True, "window": _title(root),
+            "matches": "\n".join(rows[i] for i in hits), "index": hits[0]}
 
 
 def act(index=0, action="click", value=""):

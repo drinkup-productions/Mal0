@@ -4,9 +4,11 @@ CLASS = {
     "read": "read", "tail": "read", "code_grep": "read", "list_windows": "read",
     "screen_shot": "read", "uia_tree": "read", "uia_find": "read",
     "undo_list": "read", "proposals": "read", "list_skills": "read", "list_apps": "read",
+    "profile_list": "read", "profile_show": "read",
     # write
     "write": "write", "edit": "write", "undo": "write", "journal": "write",
     "remember": "write", "forget": "write", "write_skill": "write",
+    "profile_use": "write", "profile_save": "write", "profile_delete": "write",
     # shell
     "bash": "shell", "run_tests": "shell",
     # input
