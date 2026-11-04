@@ -88,6 +88,8 @@ def _system(cfg):
         "- The newest user message always wins over older unfinished work.\n\n"
         "File tools are jailed to the workspace and the repo.\n"
         "Workspace: %s\nSource repo: %s"
+        "- If the user declines an approval, the call did not run. Say so and stop - do "
+        "not retry it unless they ask.\n"
         % (cfg.get("workspace"), cfg.get("repo") or "(unset)")
     )
 
@@ -100,8 +102,8 @@ class Chat:
         self._ids = itertools.count(1)
         self._names = {}
         self._emitted = {}
-        
         self._answered = set()
+        self._denied = set()
         self._done = {}
         self._loop = None
         self._ws = None
@@ -148,6 +150,7 @@ class Chat:
                     self._ws = ws
                     self._started = asyncio.Event()
                     self._answered.clear()
+                    self._denied.clear()
                     self._reader = asyncio.create_task(self._pump(ws))
                     try:
                         ok = await self._start_runtime()
@@ -190,6 +193,17 @@ class Chat:
         if slot:
             slot["ok"] = ok
             slot["ev"].set()
+
+    def _spawn(self, coro, label):
+        task = asyncio.create_task(coro)
+
+        def _done(fut):
+            exc = fut.exception()
+            if exc:
+                log("letta task %s failed: %s: %s" % (label, type(exc).__name__, exc))
+
+        task.add_done_callback(_done)
+        return task
 
     # -- runtime -------------------------------------------------------
     async def _start_runtime(self):
@@ -291,6 +305,7 @@ class Chat:
                 log("letta stop: %s" % d.get("stop_reason"))
                 if d.get("stop_reason") != "requires_approval":
                     self._emitted.clear()
+                    self._denied.clear()
                     self._done.clear()
                     self.bus.emit(E.ev(E.TURN, messages=[]))
                 return
@@ -308,12 +323,12 @@ class Chat:
 
         if t == "control_request":
             log("letta CONTROL: %s" % json.dumps(msg)[:900])
-            await self._approval(msg)
+            self._spawn(self._approval(msg), "approval")
             return
 
         if t == "external_tool_call_request":
             log("letta TOOLREQ: %s" % json.dumps(msg)[:400])
-            asyncio.create_task(self._tool(msg))
+            self._spawn(self._tool(msg), "tool")
             return
 
         if t == "update_loop_status":
@@ -347,6 +362,7 @@ class Chat:
             return
         self._answered.add(rid)
         req = msg.get("request") or {}
+        call_id = req.get("tool_call_id") or ""
         name = req.get("tool_name") or req.get("tool") or "tool"
         args = req.get("input") or req.get("args") or {}
         pid = next(self._ids)
@@ -355,17 +371,29 @@ class Chat:
         self.bus.emit(E.ev(E.CONFIRM, id=pid, name=name, args=args))
         await asyncio.to_thread(slot["ev"].wait, 300)
         self.pending.pop(pid, None)
+        if not slot["ok"] and call_id:
+            self._denied.add(call_id)
         decision = {"behavior": "allow" if slot["ok"] else "deny",
-                    "message": "approved" if slot["ok"] else "skipped"}
+                    "message": "approved" if slot["ok"] else
+                               "declined by the user - do not retry"}
         payload = {"kind": "approval_response", "request_id": rid, "decision": decision}
-        log("letta approve -> %s %s %s" % (rid, decision["behavior"], json.dumps(args)[:200]))
+        log("letta approve -> %s %s %s" % (rid, decision["behavior"],
+                                           json.dumps(args)[:200]))
         try:
             await self._ws.send(json.dumps({"type": "input",
                                             "runtime": self._runtime,
                                             "payload": payload}))
         except Exception as exc:
             log("letta approve send failed: %s" % exc)
+
     async def _tool(self, msg):
+        call_id = msg.get("tool_call_id") or ""
+        if call_id and call_id in self._denied:
+            log("letta skipped-by-approval %s" % msg.get("tool_name"))
+            self.bus.emit(E.ev(E.TOOL_RESULT, ok=False, text="skipped by the user"))
+            await self._respond(msg, {"error": "the user skipped this call - it did NOT "
+                                               "run, so nothing changed"}, True)
+            return
         name = self._names.get(msg.get("tool_name"), msg.get("tool_name"))
         args = msg.get("input") or {}
         from ..tools import registry
@@ -377,6 +405,27 @@ class Chat:
                                              "use the earlier result, do not repeat it",
                                       "previous": self._done[sig]}, False)
             return
+        if self.cfg.get("confirm") and name in registry.CONFIRM and not call_id:
+            pid = next(self._ids)
+            slot = {"ev": threading.Event(), "ok": False}
+            self.pending[pid] = slot
+            self.bus.emit(E.ev(E.CONFIRM, id=pid, name=name, args=args))
+            await asyncio.to_thread(slot["ev"].wait, 300)
+            self.pending.pop(pid, None)
+            if not slot["ok"]:
+                await self._respond(msg, {"error": "the user declined this call - it did NOT "
+                                               "run. Acknowledge and stop; do not retry "
+                                               "unless asked."}, True)
+                return
+        self.bus.emit(E.ev(E.TOOL, name=name, args=args))
+        tmo = int(self.cfg.get("tool_timeout") or 120)
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(registry.run, name, args), tmo)
+        except asyncio.TimeoutError:
+            result = {"error": "tool timed out after %ds" % tmo}
+        except Exception as exc:
+            result = {"error": "%s: %s" % (type(exc).__name__, exc)}
         ok = "error" not in result
         if ok:
             self._done[sig] = result
