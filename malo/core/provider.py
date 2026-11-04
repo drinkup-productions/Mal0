@@ -30,6 +30,29 @@ class OpenAICompat:
         except Exception:
             return []
 
+    def complete(self, messages, timeout=90, max_tokens=400):
+        """One non-streaming turn. Used by memory extraction and other side calls."""
+        payload = {"model": messages_model(messages), "messages": messages,
+                   "temperature": 0.2, "max_tokens": max_tokens, "stream": False}
+        req = urllib.request.Request(self.base_url + "/chat/completions",
+                                     data=json.dumps(payload).encode(),
+                                     method="POST", headers=self._headers())
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                j = json.loads(r.read())
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", "replace")[:400]
+            except Exception:
+                pass
+            raise ProviderError("HTTP %s %s" % (exc.code, body))
+        except urllib.error.URLError as exc:
+            raise ProviderError("cannot reach %s (%s)" % (self.base_url, exc.reason))
+        except ValueError as exc:
+            raise ProviderError("bad JSON from %s (%s)" % (self.base_url, exc))
+        return ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+
     def stream(self, messages, tools, stop, timeout=1800):
         """Yield parsed SSE chunks until [DONE] or stop is set."""
         payload = {"model": messages_model(messages), "stream": True,
@@ -86,13 +109,3 @@ def build(cfg):
                         cfg.get("api_key") or "",
                         float(cfg.get("temperature") or 0.7),
                         int(cfg.get("ctx") or 0))
-                        
-def complete(self, messages, timeout=90, max_tokens=400):
-        payload = {"model": messages_model(messages), "messages": messages,
-                   "temperature": 0.2, "max_tokens": max_tokens, "stream": False}
-        req = urllib.request.Request(self.base_url + "/chat/completions",
-                                     data=json.dumps(payload).encode(),
-                                     method="POST", headers=self._headers())
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            j = json.loads(r.read())
-        return ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""

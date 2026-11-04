@@ -81,6 +81,10 @@ class ChatApp(KApp):
         self.model.values = ids or ["(none)"]
 
     def _persona(self, _w, pid):
+        from ...core.evolution import track_mode_usage
+        # Track the mode switch before changing personas
+        if self.cfg.get("persona"):
+            track_mode_usage(self.cfg["persona"])
         self.cfg["persona"] = pid
         want = (personas.PERSONAS.get(pid) or {}).get("model") or ""
         if want:

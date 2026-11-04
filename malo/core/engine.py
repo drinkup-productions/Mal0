@@ -5,10 +5,32 @@ import json
 import threading
 import time
 
-from . import events as E, ledger, log as _log, memory, presence, prompt, provider
+from . import (events as E, ledger, log as _log, memory, presence, prompt,
+               provider, tasks)
 from ..tools import registry
 
 MAX_STEPS = 0  # 0 = no round cap
+
+NEW_TASK = (
+    "NEW INSTRUCTION. The message after this is the current task and supersedes "
+    "anything you were part-way through. Answer it first. Only go back to older work "
+    "if this message points at it, or if it is a one-step follow-on."
+)
+
+
+def _slim(messages):
+    """Keep the newest turn whole; reduce older turns to plain user/assistant text.
+
+    Older tool calls and their results are what make an abandoned task look live.
+    """
+    if not messages:
+        return []
+    cut = len(messages) - 1
+    while cut > 0 and messages[cut].get("role") != "user":
+        cut -= 1
+    old = [m for m in messages[:cut]
+           if m.get("role") == "user" or (m.get("role") == "assistant" and m.get("content"))]
+    return old + list(messages[cut:])
 
 
 class Engine:
@@ -42,8 +64,13 @@ class Engine:
         prov = provider.build(self.cfg)
         last_user = next((m["content"] for m in reversed(messages)
                           if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+        if last_user:
+            tasks.begin(last_user)
         system = prompt.build(self.cfg, platform_name, last_user)
-        convo = [{"role": "system", "content": system}] + messages
+        convo = [{"role": "system", "content": system}] + _slim(messages)
+        if last_user:
+            idx = max(i for i, m in enumerate(convo) if m.get("role") == "user")
+            convo.insert(idx, {"role": "system", "content": NEW_TASK})
         n0 = len(convo)
         out = []
         try:

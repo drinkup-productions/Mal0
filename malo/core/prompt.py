@@ -1,7 +1,7 @@
 """System prompt assembly."""
 import time
 
-from . import feedback, memory, personas, presence, profiles
+from . import feedback, memory, perm, personas, presence, profiles, tasks
 
 SHELLS = {
     "windows": ("the platform shell - Windows PowerShell 5.1",
@@ -121,12 +121,16 @@ It loads immediately; reload_skills() picks up changes; list_skills() shows fail
 Prefer a skill over a core edit for anything that is just a new ability.
 
 RULES
+- The newest user message wins. An older half-finished task is background: mention it in
+  one clause and get on with the new instruction. Do not finish the old work first.
 - Read before you edit. Never guess what a file contains.
 - For logs, call tail(path, 40). Do not guess offsets with read.
 - @SHELLRULE@
 - Prefer commands that print rows. An aggregate with no property (Count : 9) tells you nothing.
 - One step at a time.
 - When a tool fails, read the error and change something.
+- A "permission denied" is a class switch, not a broken machine. Name the class, and when
+  the user says it is back on, call the tool again rather than restating the old error.
 - Report what you did in a sentence.
 - File tools are jailed to the workspace and the repo. An outside path is refused.
 - list_windows only shows windows matching the active profile. all_profiles=True to widen.
@@ -152,6 +156,10 @@ def build(cfg, platform_name="windows", query=""):
     parts.append("ENVIRONMENT\nPlatform: %s\nWorkspace: %s\nSource repo: %s\n"
                  "Relative paths resolve against the workspace; the repo is absolute."
                  % (platform_name, cfg.get("workspace"), cfg.get("repo") or "(unset)"))
+    parts.append("PERMISSIONS (live)\n" + perm.report(cfg)
+                 + "\nOff classes refuse with 'permission denied'. That is a switch, not a "
+                   "broken machine - say which class is off and stop. When the user says it "
+                   "is back on, call the tool again.")
     prof = profiles.active_name()
     pd = profiles.get(prof)
     if prof != profiles.BUILTIN:
@@ -168,7 +176,7 @@ def build(cfg, platform_name="windows", query=""):
                                                          presence.fragment()))
     j = presence.journal_read()
     if j:
-        parts.append("WHAT YOU LEFT FOR YOURSELF\n" + j)
+        parts.append("WHAT YOU LEFT FOR YOURSELF (background - not a queue of work)\n" + j)
     parts.append(guide)
     fb = feedback.recent(4)
     if fb:
@@ -178,4 +186,8 @@ def build(cfg, platform_name="windows", query=""):
             ctx = ("  [after: %s]" % f["prompt"]) if f.get("prompt") else ""
             lines.append("- (%s) %s%s" % (tag, f.get("text") or "(no detail)", ctx))
         parts.append("RECENT FEEDBACK\n" + "\n".join(lines))
+    t = tasks.current()
+    if t["text"]:
+        parts.append("CURRENT TASK (authoritative; everything above is background)\n"
+                     + t["text"] + "\nStarted %s ago." % tasks._age(tasks.age()))
     return "\n\n".join(x for x in parts if x)

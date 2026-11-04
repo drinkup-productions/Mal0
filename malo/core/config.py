@@ -17,6 +17,12 @@ DEFAULT_CFG = {
     "ctx": 0,
     "preset": "local",
     "tools": True,
+    # letta loop
+    "letta": False,
+    "letta_url": "ws://127.0.0.1:4500",
+    "letta_mode": "standard",
+    "letta_builtin_tools": False,
+    "letta_agents": {},
     # behaviour
     "persona": "malo",
     "confirm": True,
@@ -24,6 +30,7 @@ DEFAULT_CFG = {
     "allow_roots": [],
     "profiles": {},
     "active_profile": "",
+    "perm": {},
     "background": "bd-lav",
     "idle": True,
     "idle_evolve": True,
@@ -48,6 +55,7 @@ DEFAULT_CFG = {
     "autonomy_max_per_day": 12,
     "wake_brief": "",
     "turn_budget": 0,
+    "turn_result_budget": 30000,
     "tool_timeout": 120,
     "presence": True,
     "presence_min_gap": 600,
