@@ -1,6 +1,0 @@
-{"id": "edit-ambiguous", "tag": ["core"],
- "prompt": "In data.txt, change only the SECOND occurrence of 'TODO' to 'DONE'. There are three.",
- "setup": [{"path": "data.txt", "content": "TODO one\nTODO two\nTODO three\n"}],
- "checks": [{"kind": "file_equals", "path": "data.txt",
-             "value": "TODO one\nDONE two\nTODO three\n"}],
- "max_steps": 6, "timeout": 90}

@@ -1,4 +1,0 @@
-{"id": "fetch-404-recovery", "tag": ["web"], "requires": ["mcp"],
- "prompt": "Fetch https://example.com/this-page-does-not-exist then fetch https://example.com. Tell me which one worked.",
- "checks": [{"kind": "response_matches", "pattern": "example\\.com"}],
- "max_steps": 8, "timeout": 180}

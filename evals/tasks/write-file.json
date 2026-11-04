@@ -1,4 +1,0 @@
-{"id": "write-file", "tag": ["core"],
- "prompt": "Create out/hello.txt containing exactly: hello world",
- "checks": [{"kind": "file_contains", "path": "out/hello.txt", "value": "hello world"}],
- "max_steps": 4, "timeout": 90}

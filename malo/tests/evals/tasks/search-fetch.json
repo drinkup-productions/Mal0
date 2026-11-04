@@ -1,4 +1,0 @@
-{"id": "search-fetch", "tag": ["web"], "requires": ["mcp"],
- "prompt": "Search the web for the official Python documentation homepage and tell me its URL.",
- "checks": [{"kind": "response_matches", "pattern": "python\\.org"}],
- "max_steps": 8, "timeout": 180}

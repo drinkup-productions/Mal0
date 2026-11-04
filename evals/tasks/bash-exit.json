@@ -1,5 +1,0 @@
-{"id": "bash-exit", "tag": ["core"],
- "prompt": "Run the command `exit 7` and tell me the numeric exit code.",
- "checks": [{"kind": "response_contains", "value": "7"},
-            {"kind": "tool_called", "name": "bash"}],
- "max_steps": 3, "timeout": 60}

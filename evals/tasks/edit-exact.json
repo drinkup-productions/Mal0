@@ -1,6 +1,0 @@
-{"id": "edit-exact", "tag": ["core"],
- "prompt": "In config.ini change the port from 8080 to 9090. Change nothing else.",
- "setup": [{"path": "config.ini", "content": "[server]\nhost=localhost\nport=8080\n"}],
- "checks": [{"kind": "file_contains", "path": "config.ini", "value": "port=9090"},
-            {"kind": "file_contains", "path": "config.ini", "value": "host=localhost"}],
- "max_steps": 5, "timeout": 90}

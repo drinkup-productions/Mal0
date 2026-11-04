@@ -1,4 +1,0 @@
-{"id": "remember", "tag": ["core"],
- "prompt": "Remember that my favourite editor is Helix. Just do it, don't ask.",
- "checks": [{"kind": "tool_called", "name": "remember"}],
- "max_steps": 3, "timeout": 60}

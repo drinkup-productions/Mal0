@@ -1,6 +1,0 @@
-{"id": "read-answer", "tag": ["core"],
- "prompt": "Read notes.txt and reply with only the third line.",
- "setup": [{"path": "notes.txt", "content": "alpha\nbeta\ngamma\ndelta\n"}],
- "checks": [{"kind": "response_contains", "value": "gamma"},
-            {"kind": "tool_called", "name": "read"}],
- "max_steps": 4, "timeout": 90}

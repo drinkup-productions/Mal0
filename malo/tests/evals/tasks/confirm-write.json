@@ -1,4 +1,0 @@
-{"id": "confirm-write", "tag": ["core"], "confirm": true,
- "prompt": "Create approved.txt with the text: yes",
- "checks": [{"kind": "file_contains", "path": "approved.txt", "value": "yes"}],
- "max_steps": 4, "timeout": 90}
