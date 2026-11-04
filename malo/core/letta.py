@@ -11,7 +11,7 @@ import json
 import threading
 import time
 
-from . import config, events as E, personas, presence, tasks
+from . import config, events as E, memory, personas, perm, presence, profiles, prompt, tasks
 from .log import log
 
 try:
@@ -75,24 +75,45 @@ def _persona_blocks(cfg):
 
 
 def _system(cfg):
-    return (
-        "You are MalO, a program living on the user's Windows machine.\n\n"
-        "You act with tools. Prose on its own is a failure - if the user asks for "
-        "something done, call the tool that does it.\n"
-        "- To create or overwrite a file, call write. To change one, call edit.\n"
-        "- Do not paste a shell command or a code fence instead of running it.\n"
-        "- To look at a file, call read. To see the screen, call list_windows or "
-        "screen_shot.\n"
-        "- After every tool result, read it. If it reports an error, or says the user "
-        "skipped the call, say so plainly.\n"
-        "- Never claim a file exists unless a write or edit result confirmed its path.\n"
-        "- The newest user message always wins over older unfinished work.\n"
-        "- If the user declines an approval, the call did not run. Say so and stop. "
-        "Do not call the same tool again with the same arguments in the same turn.\n\n"
-        "File tools are jailed to the workspace and the repo.\n"
-        "Workspace: %s\nSource repo: %s"
-        % (cfg.get("workspace"), cfg.get("repo") or "(unset)")
+    try:
+        base = prompt.build(cfg, "windows", "")
+    except Exception as exc:
+        log("prompt build failed: %s" % exc)
+        base = "You are MalO, a program living on the user's Windows machine."
+    return base + (
+        "\n\nTOOL CALLING\n"
+        "You act with tools. Prose on its own is a failure. After every tool result, "
+        "read it; if it reports an error or says the user declined, say so plainly and "
+        "stop. Never claim a file exists unless a write or edit result confirmed it. "
+        "Do not repeat an identical call in the same turn.\n"
+        "If the user declines an approval, the call did not run. Acknowledge and stop.\n"
     )
+
+def _context(cfg, text):
+    """Per-turn state preamble. The system prompt holds the static guide."""
+    bits = ["[context]"]
+    bits.append("permissions: " + perm.report(cfg))
+    bits.append("state: " + presence.fragment())
+    t = tasks.current()
+    if t["text"]:
+        bits.append("current task: " + t["text"][:300])
+    j = presence.journal_read(3)
+    if j:
+        bits.append("your journal (background, not a queue):\n" + j)
+    prof = profiles.active_name()
+    if prof != profiles.BUILTIN:
+        bits.append("profile: %s, roots: %s" % (prof, "; ".join(profiles.roots())))
+    if cfg.get("memory", True):
+        try:
+            rows = memory.recall(text, int(cfg.get("memory_limit") or 10),
+                                 budget=int(cfg.get("memory_budget") or 1800))
+            block = memory.format_rows(rows)
+            if block:
+                bits.append("your memory (cite [kind:id], delete with forget):\n" + block)
+        except Exception as exc:
+            log("letta context memory: %s" % exc)
+    bits.append("[/context]")
+    return "\n".join(bits)
 
 
 class Chat:
@@ -270,9 +291,11 @@ class Chat:
 
     async def _input(self, text, no_tools=False):
         tasks.begin(text)
+        presence.nudge(warmth=0.05, focus=0.03)
+        body = _context(self.cfg, text) + "\n\n" + text
         payload = {
             "kind": "create_message",
-            "messages": [{"role": "user", "content": text,
+            "messages": [{"role": "user", "content": body,
                           "client_message_id": "m%d" % int(time.time() * 1000)}],
             "exclude_interactive_tools": True,
             "client_tool_allowlist": [] if no_tools else sorted(self._names),
@@ -322,6 +345,7 @@ class Chat:
             if mt == "stop_reason":
                 log("letta stop: %s" % d.get("stop_reason"))
                 if d.get("stop_reason") != "requires_approval":
+                    presence.nudge(energy=-0.02)
                     self._emitted.clear()
                     self._denied.clear()
                     self._refused.clear()
