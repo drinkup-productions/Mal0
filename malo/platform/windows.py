@@ -61,7 +61,7 @@ class MciAudio(Audio):
     def play(self, path, volume=80):
         if self._mci is None:
             return False
-        alias = "m%d" % (len(self._live) + int(os.getpid()))
+        alias = "m%d" % next(self._n)
         sp = _short(path)
         with self._lock:
             if self._cmd('open "%s" type mpegvideo alias %s' % (sp, alias)):
@@ -116,6 +116,14 @@ class Windows(Platform):
             sfx_dir=os.path.join(root, "sfx"),
             workspace_default=os.path.expanduser("~"),
         )
+
+    def notify(self, title, text):
+        try:
+            from win11toast import toast
+            toast(str(title)[:60], str(text)[:200])
+            return True
+        except Exception:
+            return super().notify(title, text)
 
     def asset(self, name):
         here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -178,6 +186,9 @@ class Windows(Platform):
         seen = set()
         user32 = ctypes.windll.user32
         k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
         proc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
 
         def _name(pid):
@@ -228,8 +239,8 @@ class Windows(Platform):
         if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(li)):
             return 0.0
         k32 = ctypes.windll.kernel32
-        k32.GetTickCount64.restype = ctypes.c_ulonglong
-        return max(0.0, (k32.GetTickCount64() - li.dwTime) / 1000.0)
+        k32.GetTickCount.restype = wintypes.DWORD
+        return max(0.0, ((k32.GetTickCount() - li.dwTime) & 0xFFFFFFFF) / 1000.0)
 
     # ---- input -------------------------------------------------------
     def _vk(self, name):
@@ -310,7 +321,7 @@ class PystrayTray:
         except Exception as exc:
             log("tray unavailable: %s" % exc)
             return
-        from ..core import personas
+        from ..core import config, personas
 
         menu = pystray.Menu(
             pystray.MenuItem("Open MalO", app.show, default=True),
@@ -323,7 +334,8 @@ class PystrayTray:
                 for pid, p in personas.PERSONAS.items()])),
             pystray.MenuItem("Ask before write / edit / bash",
                              lambda: (app.cfg.__setitem__("confirm", not app.cfg.get("confirm")),
-                                      __import__("malo.core.config", fromlist=["x"]).save())),
+                                      config.save()),
+                             checked=lambda i: bool(app.cfg.get("confirm"))),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", app.quit),
         )

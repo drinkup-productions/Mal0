@@ -25,14 +25,18 @@ def propose(title, rationale, files):
         return {"error": str(exc)}
 
 
-def apply(pid):
+def apply(pid, force=False):
     if config.get("self_edit") != "apply":
         return {"error": "self_edit is %r - set it to 'apply' first" % config.get("self_edit")}
     try:
-        return selfdev.apply(pid)
+        return selfdev.apply(pid, bool(force))
     except Exception as exc:
         return {"error": str(exc)}
 
 
 def proposals():
     return selfdev.proposals()
+
+
+def discard(pid):
+    return selfdev.discard(pid)

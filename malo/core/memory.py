@@ -15,6 +15,12 @@ _LOCK = threading.RLock()
 _CONN = None
 _MAINT = {"thread": None}
 
+SCHEMA_VERSION = 1
+
+MIGRATIONS = {
+    # 2: "ALTER TABLE mem ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mem (
     id INTEGER PRIMARY KEY,
@@ -46,6 +52,20 @@ END;
 _W = {"bm25": 0.55, "recency": 0.20, "importance": 0.15, "reinforce": 0.10}
 _HALF_LIFE = 21.0  # days
 
+def _migrate_schema(c):
+    have = c.execute("PRAGMA user_version").fetchone()[0]
+    if have == 0:
+        c.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
+        c.commit()
+        return
+    for version in sorted(MIGRATIONS):
+        if version <= have:
+            continue
+        c.executescript(MIGRATIONS[version])
+        c.execute("PRAGMA user_version = %d" % version)
+        c.commit()
+        _log.log("memory migrated to v%d" % version)
+
 
 def conn():
     global _CONN
@@ -54,6 +74,7 @@ def conn():
                                 check_same_thread=False)
         _CONN.row_factory = sqlite3.Row
         _CONN.executescript(SCHEMA)
+        _migrate_schema(_CONN)
         _CONN.commit()
         _migrate_notes(_CONN)
         if _MAINT["thread"] is None:

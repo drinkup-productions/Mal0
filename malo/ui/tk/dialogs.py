@@ -4,7 +4,7 @@ import threading
 import tkinter as tk
 import time
 
-from ...core import config, feedback, personas
+from ...core import config, feedback, personas, profiles
 from ...tools import mcp
 from . import theme
 
@@ -27,7 +27,7 @@ def open_settings(app):
     app.settings_win = w
     w.title("MalO - settings")
     w.configure(bg=BG)
-    w.geometry("560x980")
+    w.geometry("560x1080")
     w.transient(app.root)
 
     tk.Label(w, text="Settings", bg=BG, fg=FG,
@@ -94,6 +94,8 @@ def open_settings(app):
     ev_min.pack(side="left")
     tk.Label(erow, text=" minutes", bg=BG, fg=MUTED,
              font=("Segoe UI", 8)).pack(side="left")
+
+    _profiles_section(w, app)
 
     sfx_v = tk.BooleanVar(value=bool(app.cfg.get("sfx", True)))
     tk.Checkbutton(w, text="Sound", variable=sfx_v, bg=BG, fg=FG, selectcolor=PANEL,
@@ -209,6 +211,96 @@ def open_settings(app):
     _btn(brow, "Memory", lambda: open_memory(app))
 
 
+def _profiles_section(w, app):
+    tk.Label(w, text="Workspace profiles", bg=BG, fg=FG,
+             font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 0))
+    tk.Label(w, text="A profile is a set of allowed roots, a window filter and a brief.",
+             bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14)
+
+    row = tk.Frame(w, bg=BG)
+    row.pack(fill="x", padx=14, pady=3)
+    var = tk.StringVar(value=profiles.active_name())
+    om = tk.OptionMenu(row, var, *profiles.names())
+    om.configure(bg=PANEL, fg=FG, activebackground=BORDER, activeforeground=FG,
+                 relief="flat", highlightthickness=0, font=("Segoe UI", 8),
+                 width=20, anchor="w")
+    om["menu"].configure(bg=PANEL, fg=FG)
+    om.pack(side="left")
+
+    def use():
+        r = profiles.use(var.get())
+        if "error" in r:
+            app.say(r["error"], 2200)
+            return
+        app.cfg["workspace"] = r["workspace"]
+        app.say("profile " + r["profile"], 1600)
+        fill()
+
+    _btn(row, "use", use).pack(side="left", padx=4)
+
+    def remove():
+        r = profiles.remove(var.get())
+        app.say(r.get("error") or "removed", 1600)
+        var.set(profiles.active_name())
+        fill()
+
+    _btn(row, "delete", remove).pack(side="left")
+
+    tk.Label(w, text="name", bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14)
+    name = tk.Entry(w, bg=PANEL, fg=FG, relief="flat", insertbackground=FG)
+    name.pack(fill="x", padx=14)
+
+    tk.Label(w, text="allowed roots, one per line", bg=BG, fg=MUTED,
+             font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(3, 0))
+    roots = tk.Text(w, height=3, bg=PANEL, fg=FG, relief="flat", insertbackground=FG,
+                    wrap="none", font=("Consolas", 8))
+    roots.pack(fill="x", padx=14)
+
+    tk.Label(w, text="window title filter, one fragment per line (blank shows all)",
+             bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(3, 0))
+    wins = tk.Text(w, height=2, bg=PANEL, fg=FG, relief="flat", insertbackground=FG,
+                   wrap="none", font=("Consolas", 8))
+    wins.pack(fill="x", padx=14)
+
+    tk.Label(w, text="brief", bg=BG, fg=MUTED,
+             font=("Segoe UI", 8)).pack(anchor="w", padx=14, pady=(3, 0))
+    bf = tk.Text(w, height=3, bg=PANEL, fg=FG, relief="flat", insertbackground=FG,
+                 wrap="word", font=("Segoe UI", 8))
+    bf.pack(fill="x", padx=14)
+
+    def _lines(widget):
+        return [l.strip() for l in widget.get("1.0", "end").splitlines() if l.strip()]
+
+    def fill(*_a):
+        p = profiles.get(var.get())
+        name.delete(0, "end")
+        name.insert(0, "" if p["name"] == profiles.BUILTIN else p["name"])
+        roots.delete("1.0", "end")
+        roots.insert("1.0", "\n".join(p["roots"]))
+        wins.delete("1.0", "end")
+        wins.insert("1.0", "\n".join(p["windows"]))
+        bf.delete("1.0", "end")
+        bf.insert("1.0", p["brief"])
+
+    def store():
+        r = profiles.save(name.get() or var.get(), _lines(roots), _lines(wins),
+                          bf.get("1.0", "end"))
+        if "error" in r:
+            app.say(r["error"], 2200)
+            return
+        app.say("profile " + r["saved"] + " saved", 1600)
+        var.set(r["saved"])
+        fill()
+
+    srow = tk.Frame(w, bg=BG)
+    srow.pack(fill="x", padx=14, pady=(3, 0))
+    _btn(srow, "Save profile", store).pack(side="left")
+    _btn(srow, "Reload", fill).pack(side="left", padx=4)
+
+    var.trace_add("write", fill)
+    fill()
+
+
 def _sfx_files(app):
     try:
         return sorted(n for n in os.listdir(app.rt.paths.sfx_dir)
@@ -221,115 +313,3 @@ def _play(app, name):
     p = os.path.join(app.rt.paths.sfx_dir, os.path.basename(name or ""))
     if os.path.isfile(p):
         app.rt.audio.play(p, int(app.cfg.get("sfx_volume") or 80))
-
-
-def open_calibration(app):
-    if app.cal_win and app.cal_win.winfo_exists():
-        app.cal_win.deiconify()
-        app.cal_win.lift()
-        return
-    w = tk.Toplevel(app.root)
-    app.cal_win = w
-    w.title("MalO - calibration")
-    w.configure(bg=BG)
-    w.geometry("500x600")
-    w.transient(app.root)
-
-    app.rig.calm = True
-    app.rig.show_zones = True
-    app._zones()
-
-    def close():
-        app.rig.show_zones = False
-        app.rig.calm = False
-        app.canvas.delete("zone")
-        w.destroy()
-    w.protocol("WM_DELETE_WINDOW", close)
-
-    tk.Label(w, text="Line the ear and mouth zones up with the picture",
-             bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12, pady=(10, 2))
-
-    showv = tk.BooleanVar(value=True)
-    top = tk.Frame(w, bg=BG)
-    top.pack(fill="x", padx=12)
-    tk.Checkbutton(top, text="show zones", variable=showv,
-                   command=lambda: (setattr(app.rig, "show_zones", bool(showv.get())),
-                                    app._zones()),
-                   bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
-                   activeforeground=FG, font=("Segoe UI", 9)).pack(side="left")
-    _btn(top, "reset", app._cal_reset).pack(side="right")
-
-    for side, label in (("L", "Left ear"), ("R", "Right ear"), ("M", "Mouth patch")):
-        f = tk.Frame(w, bg=BG)
-        f.pack(fill="x", padx=12, pady=4)
-        tk.Label(f, text=label, bg=BG, fg=FG,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        for key, lab in (("cx", "X"), ("cy", "Y"), ("rx", "W"), ("ry", "H")):
-            r = tk.Frame(f, bg=BG)
-            r.pack(fill="x")
-            tk.Label(r, text=lab, bg=BG, fg=MUTED, width=2,
-                     font=("Segoe UI", 8)).pack(side="left")
-            lo, hi = (25.0, 75.0) if key == "cx" else (0.0, 24.0)
-            var = tk.DoubleVar(value=app.rig.tune[side][key])
-            tk.Scale(r, from_=lo, to=hi, resolution=0.2, orient="horizontal",
-                     variable=var, bg=BG, fg=FG, troughcolor=PANEL,
-                     highlightthickness=0, activebackground=ACCENT, length=340,
-                     font=("Segoe UI", 7),
-                     command=lambda val, s=side, k=key: app._cal(s, k, float(val))
-                     ).pack(side="left", fill="x", expand=True)
-
-    tk.Label(w, text="Reactions", bg=BG, fg=FG,
-             font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
-    rx = tk.Frame(w, bg=BG)
-    rx.pack(fill="x", padx=12)
-    for icon in theme.REACTIONS:
-        _btn(rx, theme.GLYPH.get(icon, "?"), lambda i=icon: app.react(i)).pack(side="left", padx=2)
-
-    tk.Label(w, text="States", bg=BG, fg=FG,
-             font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(10, 2))
-    st = tk.Frame(w, bg=BG)
-    st.pack(fill="x", padx=12)
-    for name in theme.STATES:
-        _btn(st, name, lambda n=name: app.set_state(n)).pack(side="left", padx=2, pady=2)
-
-def open_memory(app):
-    from ...core import memory
-    if getattr(app, "mem_win", None) and app.mem_win.winfo_exists():
-        app.mem_win.deiconify(); app.mem_win.lift(); return
-    w = tk.Toplevel(app.root)
-    app.mem_win = w
-    w.title("MalO - memory")
-    w.configure(bg=BG)
-    w.geometry("620x560")
-    w.transient(app.root)
-
-    top = tk.Frame(w, bg=BG)
-    top.pack(fill="x", padx=12, pady=8)
-    qv = tk.StringVar()
-    e = tk.Entry(top, textvariable=qv, bg=PANEL, fg=FG, relief="flat", insertbackground=FG)
-    e.pack(side="left", fill="x", expand=True)
-    body = tk.Frame(w, bg=BG)
-    body.pack(fill="both", expand=True, padx=12, pady=(0, 10))
-
-    def render(*_a):
-        for ch in body.winfo_children():
-            ch.destroy()
-        for r in memory.listing(qv.get()):
-            row = tk.Frame(body, bg=PANEL)
-            row.pack(fill="x", pady=1)
-            tk.Label(row, text="%s:%d%s" % (r["kind"][0], r["id"], "*" if r["pinned"] else ""),
-                     bg=PANEL, fg=ACCENT, font=("Consolas", 8), width=8,
-                     anchor="w").pack(side="left")
-            tk.Label(row, text=r["text"][:90], bg=PANEL, fg=FG, font=("Segoe UI", 8),
-                     anchor="w", justify="left", wraplength=380).pack(side="left", fill="x",
-                                                                     expand=True)
-            tk.Label(row, text="%dh" % max(1, int((time.time() - r["seen"]) / 3600)),
-                     bg=PANEL, fg=MUTED, font=("Segoe UI", 7)).pack(side="left", padx=4)
-            _btn(row, "pin", lambda i=r["id"], p=r["pinned"]: (memory.set_pinned(i, not p), render())
-                 ).pack(side="left", padx=2)
-            _btn(row, "del", lambda i=r["id"]: (memory.forget(mid=i), render())
-                 ).pack(side="left", padx=2)
-
-    e.bind("<KeyRelease>", render)
-    _btn(top, "clear", lambda: (qv.set(""), render())).pack(side="left", padx=4)
-    render()

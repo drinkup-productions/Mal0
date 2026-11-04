@@ -7,7 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from ..core import config, engine, events as E, feedback, personas, provider
+from ..core import (config, engine, events as E, feedback, personas, profiles,
+                    provider)
 from ..core.log import log
 from .page import PAGE
 
@@ -115,6 +116,9 @@ class Handler(BaseHTTPRequestHandler):
                 "model": config.CFG.get("model") or "",
                 "stage": S["stage"],
                 "streaming": S["streaming"],
+                "profiles": [{"name": r["name"], "active": r["active"]}
+                             for r in profiles.rows()],
+                "profile": profiles.active_name(),
             })
         if u.path == "/img":
             name = (qs.get("name") or [""])[0]
@@ -201,6 +205,14 @@ class Handler(BaseHTTPRequestHandler):
             S["history"] = []
             broadcast(E.ev(E.STATE))
             return self._json({"ok": True})
+        if u.path == "/profile":
+            r = profiles.use(body.get("name") or "")
+            if "error" in r:
+                return self._json({"ok": False, "error": r["error"]})
+            S["history"] = []
+            broadcast(E.ev(E.STATE))
+            return self._json({"ok": True, "profile": r["profile"],
+                               "workspace": r["workspace"]})
         if u.path == "/model":
             v = body.get("value") or ""
             if v:

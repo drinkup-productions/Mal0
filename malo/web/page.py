@@ -27,6 +27,7 @@ footer{display:flex;gap:6px;padding:8px;background:var(--pan);border-top:1px sol
 #bar{display:none;gap:6px;padding:8px;background:#3a2f10;color:#ffd479;align-items:center}
 </style></head><body>
 <header>
+ <select id="pro" title="workspace profile"></select>
  <select id="per"></select>
  <select id="mod"></select>
  <button class="ghost" id="pat">headpat</button>
@@ -61,6 +62,10 @@ function paint(){
 
 async function load(){
   const s = await (await fetch("/state?t=" + encodeURIComponent(T))).json();
+  $("pro").innerHTML = "";
+  for (const p of s.profiles){ const o = document.createElement("option");
+    o.value = p.name; o.textContent = p.name; if (p.name === s.profile) o.selected = true;
+    $("pro").appendChild(o); }
   $("per").innerHTML = "";
   for (const p of s.personas){ const o = document.createElement("option");
     o.value = p.id; o.textContent = p.label; if (p.id === s.active) o.selected = true;
@@ -71,6 +76,8 @@ async function load(){
   stage = s.stage; baseImg = s.active; paint();
 }
 
+$("pro").onchange = async e => { const r = await api("/profile", {name: e.target.value});
+  if (r.workspace) el("s", "profile " + r.profile + " -> " + r.workspace); };
 $("per").onchange = async e => { await api("/persona", {id: e.target.value}); stage = 0; load(); };
 $("mod").onchange = e => api("/model", {value: e.target.value});
 $("pat").onclick = () => api("/pat");

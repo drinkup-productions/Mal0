@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 
-from ..core import config, memory, personas
+from ..core import config, memory, personas, profiles
 
 
 UNDO_MAX = 50
@@ -78,9 +78,11 @@ def undo(index=0):
     shutil.copy2(r["copy"], r["path"])
     return {"restored": r["path"], "from": r["copy"]}
 
+
 def _roots():
     out = [config.get("workspace") or os.path.expanduser("~")]
     out += [r for r in (config.get("allow_roots") or []) if r]
+    out += profiles.roots()
     out.append(config.paths().root)
     if config.get("repo"):
         out.append(config.get("repo"))
@@ -228,7 +230,8 @@ def remember(text, kind="user", importance=0.5):
 def forget(mid=None, text=None):
     n = memory.forget(mid, text)
     return {"removed": n} if n else {"error": "nothing matched"}
-    
+
+
 def journal(text, keep=12):
     from ..core import presence
     t = (text or "").strip()

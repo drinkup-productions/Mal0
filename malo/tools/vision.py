@@ -2,7 +2,7 @@
 import os
 import time
 
-from ..core import config
+from ..core import config, profiles
 from ..platform import current
 
 
@@ -35,13 +35,27 @@ def screen_shot(monitor=0, scale=0.5):
             "note": "PNG saved. You cannot see pixels; use list_windows for text."}
 
 
-def list_windows(limit=60):
+def list_windows(limit=60, all_profiles=False):
     try:
         ws = current().windows(int(limit or 60))
     except Exception as exc:
         return {"error": str(exc)}
     if not ws:
         return {"windows": "(none)"}
+    prof = profiles.active_name()
+    if not all_profiles and profiles.windows(prof):
+        keep = [w for w in ws if profiles.visible(prof, w["title"], w["proc"])]
+        hidden = len(ws) - len(keep)
+        if not keep:
+            return {"windows": "(nothing matches profile %s)" % prof,
+                    "hidden": hidden,
+                    "note": "profile %s filters window titles; retry with all_profiles"
+                            % prof}
+        res = {"windows": "\n".join("%d| %s [%s]" % (w["hwnd"], w["title"], w["proc"])
+                                    for w in keep), "profile": prof}
+        if hidden:
+            res["hidden"] = hidden
+        return res
     return {"windows": "\n".join("%d| %s [%s]" % (w["hwnd"], w["title"], w["proc"])
                                  for w in ws)}
 

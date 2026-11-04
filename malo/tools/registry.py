@@ -1,5 +1,6 @@
 """Tool specs, dispatch and the confirm set."""
-from . import android as atools, core, input as itools, mcp, selfdev as sdev, skills as stools, vision
+from . import (android as atools, core, input as itools, mcp, profiles as ptools,
+               selfdev as sdev, skills as stools, vision)
 from ..core import skills
 from ..platform import current
 
@@ -20,6 +21,9 @@ IMPL = {
     "propose": sdev.propose, "apply": sdev.apply, "proposals": sdev.proposals,
     "write_skill": stools.write_skill, "list_skills": stools.list_skills,
     "reload_skills": stools.reload_skills,
+    "profile_list": ptools.profile_list, "profile_show": ptools.profile_show,
+    "profile_use": ptools.profile_use, "profile_save": ptools.profile_save,
+    "profile_delete": ptools.profile_delete,
 }
 
 
@@ -62,8 +66,11 @@ CORE_SPECS = [
     _spec("screen_shot", "Capture a monitor to a PNG. Returns the file path.",
           {"monitor": {"type": "integer", "description": "Monitor index, default 0."},
            "scale": {"type": "number", "description": "0.1-1.0, default 0.5."}}, []),
-    _spec("list_windows", "List visible top-level windows: hwnd, title, process.",
-          {"limit": {"type": "integer", "description": "Max rows, default 60."}}, []),
+    _spec("list_windows", "List visible top-level windows: hwnd, title, process. "
+                          "Filtered by the active workspace profile unless all_profiles.",
+          {"limit": {"type": "integer", "description": "Max rows, default 60."},
+           "all_profiles": {"type": "boolean", "description": "Ignore the profile filter."}},
+          []),
     _spec("focus_window", "Bring a window to the foreground by hwnd.",
           {"hwnd": {"type": "integer"}}, ["hwnd"]),
     _spec("notify", "Raise a desktop notification.",
@@ -94,6 +101,16 @@ CORE_SPECS = [
           {"name": {"type": "string"}, "code": {"type": "string"}}, ["name", "code"]),
     _spec("list_skills", "List installed skills and any that failed to load.", {}, []),
     _spec("reload_skills", "Reload skills from disk.", {}, []),
+    _spec("profile_list", "List workspace profiles and which one is active.", {}, []),
+    _spec("profile_show", "Show one profile's roots, window filter and brief.",
+          {"name": {"type": "string"}}, []),
+    _spec("profile_use", "Switch workspace profile. Rewrites the jail and the wake brief.",
+          {"name": {"type": "string"}}, ["name"]),
+    _spec("profile_save", "Create or update a profile. roots and windows are ';' separated.",
+          {"name": {"type": "string"}, "roots": {"type": "string"},
+           "windows": {"type": "string"}, "brief": {"type": "string"}}, ["name"]),
+    _spec("profile_delete", "Delete a profile.",
+          {"name": {"type": "string"}}, ["name"]),
 ]
 
 ANDROID_SPECS = [

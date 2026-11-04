@@ -6,4 +6,4 @@ If Not fso.FileExists(exe) Then
 End If
 Set sh = CreateObject("WScript.Shell")
 sh.CurrentDirectory = "C:\Users\chugs\Documents\Mal0_V1.0.2"
-sh.Run """" & exe & """ -m malo", 0, False
+sh.Run """" & exe & """ -m supervise", 0, False

@@ -5,6 +5,8 @@ import os
 from .. import platform as plat
 from .log import log
 
+OLD_TEST_CMD = "python -m compileall -q malo"
+
 DEFAULT_CFG = {
     # backend
     "provider": "openai_compat",
@@ -20,6 +22,8 @@ DEFAULT_CFG = {
     "confirm": True,
     "workspace": "",
     "allow_roots": [],
+    "profiles": {},
+    "active_profile": "",
     "background": "bd-lav",
     "idle": True,
     "idle_evolve": True,
@@ -51,7 +55,7 @@ DEFAULT_CFG = {
     "web_token": "",
     "repo": "",
     "self_edit": "propose",
-    "self_test_cmd": "python -m compileall -q malo",
+    "self_test_cmd": "python -m unittest discover -s tests -t . -q",
     "selfdev_idle_secs": 1800,
     "selfdev_cooldown_secs": 3600,
     "selfdev_max_per_day": 6,
@@ -87,6 +91,8 @@ def load():
         if "lmstudio_url" in raw and "base_url" not in raw:
             raw["base_url"] = str(raw["lmstudio_url"]).rstrip("/") + "/v1"
         CFG.update({k: v for k, v in raw.items() if k in DEFAULT_CFG})
+    if CFG.get("self_test_cmd") == OLD_TEST_CMD:
+        CFG["self_test_cmd"] = DEFAULT_CFG["self_test_cmd"]
     return CFG
 
 

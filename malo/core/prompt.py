@@ -1,7 +1,7 @@
 """System prompt assembly."""
 import time
 
-from . import feedback, memory, personas, presence
+from . import feedback, memory, personas, presence, profiles
 
 SHELLS = {
     "windows": ("the platform shell - Windows PowerShell 5.1",
@@ -46,6 +46,15 @@ Core tools, always available:
   remember(text)              append one durable fact to your notes
 
 Everything else is an MCP tool, named server__tool, or a skill.
+
+WORKSPACE PROFILES
+A profile is a named set of allowed roots, a window filter and a standing brief.
+  profile_list()              what exists, and which one you are in
+  profile_show(name)          its roots, filter and brief
+  profile_use(name)           switch; the jail and the brief change with it
+  profile_save(name, roots, windows, brief)   ';' separated
+Switch when the job moves somewhere else. Do not widen the roots of the profile you
+are in just to reach one file - make a profile for it.
 
 WEB SEARCH
 Use ddg__search first. It returns real URLs with redirects already resolved.
@@ -120,6 +129,7 @@ RULES
 - When a tool fails, read the error and change something.
 - Report what you did in a sentence.
 - File tools are jailed to the workspace and the repo. An outside path is refused.
+- list_windows only shows windows matching the active profile. all_profiles=True to widen.
 - Search your own source with code_grep, not bash. The repo path is absolute.
 - No head, tail or Unix find. Use Get-ChildItem -Recurse -Filter *.py and Select-Object -First 5.
 - While unattended, end with journal(text) if you learned or started something worth keeping.
@@ -142,6 +152,18 @@ def build(cfg, platform_name="windows", query=""):
     parts.append("ENVIRONMENT\nPlatform: %s\nWorkspace: %s\nSource repo: %s\n"
                  "Relative paths resolve against the workspace; the repo is absolute."
                  % (platform_name, cfg.get("workspace"), cfg.get("repo") or "(unset)"))
+    prof = profiles.active_name()
+    pd = profiles.get(prof)
+    if prof != profiles.BUILTIN:
+        blk = ["WORKSPACE PROFILE: " + prof]
+        if pd["brief"]:
+            blk.append(pd["brief"])
+        blk.append("Allowed roots:\n" + "\n".join("- " + r for r in pd["roots"]))
+        if pd["windows"]:
+            blk.append("Windows matching this profile: " + ", ".join(pd["windows"])
+                       + "\nAnything else is hidden from list_windows unless you pass "
+                         "all_profiles=True.")
+        parts.append("\n".join(blk))
     parts.append("STATE\nLocal time: %s\nYou feel: %s" % (time.strftime("%a %H:%M"),
                                                          presence.fragment()))
     j = presence.journal_read()
