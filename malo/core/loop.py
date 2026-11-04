@@ -61,3 +61,8 @@ class Loop:
     def close(self):
         if self._chat:
             self._chat.close()
+    def busy(self):
+        if self.mode == "letta" and self._chat:
+            return self._chat.busy()
+        return False
+           

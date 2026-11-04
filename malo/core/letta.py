@@ -8,6 +8,7 @@ still apply.
 import asyncio
 import itertools
 import json
+import re
 import threading
 import time
 
@@ -23,6 +24,14 @@ RECONNECT = 3.0
 START_TIMEOUT = 30.0
 NOISY = ("waiting_on_input",)
 MAX_REFUSE = 2
+
+# Stop reasons that mean the turn is still running.
+CONTINUE = ("requires_approval", "executing_client_side_tool", "waiting_on_approval")
+# Stop reasons that mean the turn is over and state should be reset.
+TERMINAL = ("end_turn", "stop", "max_steps", "error", "cancelled", "aborted")
+
+_TAG = re.compile(r"<tool_call>.*?(?:</tool_call>|$)|<function_call>.*?(?:</function_call>|$)",
+                  re.S | re.I)
 
 
 def _safe(name):
@@ -43,6 +52,17 @@ def _text_of(content):
                 out.append(b)
         return "".join(out)
     return "" if content is None else str(content)
+
+
+def _clean(text):
+    """Drop tool-call markup the model wrote as prose."""
+    if "<tool_call" in text or "<function_call" in text:
+        return _TAG.sub("", text).rstrip()
+    return text
+
+
+def _norm(text):
+    return " ".join(text.split()).lower()
 
 
 def _tool_specs():
@@ -89,6 +109,7 @@ def _system(cfg):
         "If the user declines an approval, the call did not run. Acknowledge and stop.\n"
     )
 
+
 def _context(cfg, text):
     """Per-turn state preamble. The system prompt holds the static guide."""
     bits = ["[context]"]
@@ -124,6 +145,11 @@ class Chat:
         self._ids = itertools.count(1)
         self._names = {}
         self._emitted = {}
+        self._turn_norm = []
+        self._turn_had_tool = False
+        self._tagged = False
+        self._tag_retry = False
+        self._last_status = ""
         self._answered = set()
         self._denied = set()
         self._refused = {}
@@ -217,10 +243,14 @@ class Chat:
         if slot:
             slot["ok"] = ok
             slot["ev"].set()
-            
+
     def stop_turn(self):
         if self._loop and self._ws:
             asyncio.run_coroutine_threadsafe(self._abort(), self._loop)
+
+    def busy(self):
+        """True while an approval is outstanding."""
+        return bool(self.pending)
 
     def _spawn(self, coro, label):
         task = asyncio.create_task(coro)
@@ -289,19 +319,56 @@ class Chat:
         asyncio.run_coroutine_threadsafe(self._input(text), self._loop)
         return True
 
-    async def _input(self, text, no_tools=False):
-        tasks.begin(text)
+    async def _input(self, text, no_tools=False, keep_task=False, is_retry=False):
+        if not keep_task:
+            tasks.begin(text)
         presence.nudge(warmth=0.05, focus=0.03)
+        self._emitted.clear()
+        self._turn_norm.clear()
+        self._turn_had_tool = False
+        self._tagged = False
+        self._last_status = ""
+        if not is_retry:
+            self._tag_retry = False
+        if not self._names:
+            _, self._names = _tool_specs()
+            log("letta tool list was empty - rebuilt %d specs" % len(self._names))
         body = _context(self.cfg, text) + "\n\n" + text
         payload = {
             "kind": "create_message",
             "messages": [{"role": "user", "content": body,
-                          "client_message_id": "m%d" % int(time.time() * 1000)}],
+                          "client_message_id": "m%d" % next(self._ids)}],
             "exclude_interactive_tools": True,
             "client_tool_allowlist": [] if no_tools else sorted(self._names),
         }
         await self._ws.send(json.dumps({"type": "input", "runtime": self._runtime,
                                         "payload": payload}))
+
+    def _close_turn(self, reason):
+        """Terminal stop: reset per-turn state and hand the turn back to the UI."""
+        presence.nudge(energy=-0.02)
+        had, tagged = self._turn_had_tool, self._tagged
+        self._emitted.clear()
+        self._turn_norm.clear()
+        self._denied.clear()
+        self._refused.clear()
+        self._done.clear()
+        self._answered.clear()
+        self._turn_had_tool = False
+        self._tagged = False
+        self._last_status = ""
+        if reason in ("end_turn", "stop") and not had and tagged and not self._tag_retry:
+            self._spawn(self._tag_nudge(), "tag_retry")
+            return
+        self.bus.emit(E.ev(E.TURN, messages=[]))
+
+    async def _tag_nudge(self):
+        await asyncio.sleep(0.4)
+        log("letta: tool_call tag in text but no call ran - nudging once")
+        self._tag_retry = True
+        await self._input("You wrote the tool call as text instead of calling it. "
+                          "Do not repeat your answer - call the tool now.",
+                          keep_task=True, is_retry=True)
 
     # -- pump ----------------------------------------------------------
     async def _pump(self, ws):
@@ -343,14 +410,11 @@ class Chat:
                 self.bus.emit(E.ev(E.ERROR, text=str(d.get("message") or "loop error")))
                 return
             if mt == "stop_reason":
-                log("letta stop: %s" % d.get("stop_reason"))
-                if d.get("stop_reason") != "requires_approval":
-                    presence.nudge(energy=-0.02)
-                    self._emitted.clear()
-                    self._denied.clear()
-                    self._refused.clear()
-                    self._done.clear()
-                    self.bus.emit(E.ev(E.TURN, messages=[]))
+                reason = str(d.get("stop_reason") or "").lower()
+                log("letta stop: %s" % reason)
+                if reason in CONTINUE:
+                    return
+                self._close_turn(reason)
                 return
             if mt == "assistant_message":
                 self._emit_text(d)
@@ -376,28 +440,39 @@ class Chat:
 
         if t == "update_loop_status":
             st = (msg.get("loop_status") or {}).get("status")
-            if st and st.lower() not in NOISY:
-                self.bus.emit(E.ev(E.THINK, text=st.lower()))
+            if st:
+                st = str(st).lower()
+                if st not in NOISY and st != self._last_status:
+                    self._last_status = st
+                    self.bus.emit(E.ev(E.THINK, text=st))
             return
 
         log("letta unhandled %s: %s" % (t, json.dumps(msg)[:400]))
 
     def _emit_text(self, d):
-        """Emit only the part of this message that has not been emitted yet."""
+        """Emit only the part of this message that is new for the message and the turn."""
         mid = d.get("id") or "?"
-        full = _text_of(d.get("content"))
-        if not full:
+        raw = _text_of(d.get("content"))
+        if "<tool_call" in raw or "<function_call" in raw:
+            self._tagged = True
+        full = _clean(raw)
+        if not full.strip():
             return
         already = self._emitted.get(mid, "")
         if full == already:
             return
-        if already and full.startswith(already):
-            new = full[len(already):]
-        else:
-            new = full
+        new = full[len(already):] if (already and full.startswith(already)) else full
         self._emitted[mid] = full
-        if new:
-            self.bus.emit(E.ev(E.DELTA, text=new))
+        if not new.strip():
+            return
+        norm = _norm(new)
+        if norm and any(norm == n or (len(norm) > 40 and norm in n)
+                        for n in self._turn_norm):
+            log("letta dropped repeated text (%d chars)" % len(norm))
+            return
+        if norm:
+            self._turn_norm.append(norm)
+        self.bus.emit(E.ev(E.DELTA, text=new))
 
     async def _send_decision(self, rid, allow, message):
         payload = {"kind": "approval_response", "request_id": rid,
@@ -415,7 +490,7 @@ class Chat:
         await self._abort()
         await asyncio.sleep(0.6)
         await self._input("%s was declined, so nothing was written. Answer in one "
-                          "sentence." % name, no_tools=True)
+                          "sentence." % name, no_tools=True, keep_task=True)
 
     async def _approval(self, msg):
         rid = msg.get("request_id") or (msg.get("request") or {}).get("request_id")
@@ -461,6 +536,7 @@ class Chat:
         args = msg.get("input") or {}
         from ..tools import registry
         sig = self._sig(name, args)
+        self._turn_had_tool = True
 
         if call_id and call_id in self._denied:
             log("letta skipped-by-approval %s" % name)

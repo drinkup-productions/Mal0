@@ -758,6 +758,9 @@ class App:
     def _finish_turn(self):
         self.loop.restore()
         self._flush_delta()
+        if self.loop.busy():
+            # mid-turn: an approval is still outstanding, keep the bar and Stop live
+            return
         self.streaming = False
         self.send_btn.configure(state="normal")
         self.stop_btn.pack_forget()
