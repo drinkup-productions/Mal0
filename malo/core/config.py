@@ -73,6 +73,9 @@ DEFAULT_CFG = {
     "selfdev_idle_secs": 1800,
     "selfdev_cooldown_secs": 3600,
     "selfdev_max_per_day": 6,
+    "chrome_path": "",
+    "perchance_headless": False,
+    "perchance_timeout": 180,
 }
 
 CFG = {}

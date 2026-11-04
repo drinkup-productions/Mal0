@@ -9,6 +9,9 @@ CLASS = {
     "write": "write", "edit": "write", "undo": "write", "journal": "write",
     "remember": "write", "forget": "write", "write_skill": "write",
     "profile_use": "write", "profile_save": "write", "profile_delete": "write",
+    "set_avatar": "write",
+    # network
+    "perchance_image": "network", "perchance_status": "network",
     # shell
     "bash": "shell", "run_tests": "shell",
     # input

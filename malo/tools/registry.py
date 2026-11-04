@@ -1,6 +1,7 @@
 """Tool specs, dispatch and the confirm set."""
 from . import (android as atools, core, input as itools, mcp, modes as mtools,
-               profiles as ptools, selfdev as sdev, skills as stools, uia, vision)
+               perchance, profiles as ptools, selfdev as sdev, skills as stools,
+               uia, vision)
 from ..core import config, perm, skills
 from ..platform import current
 
@@ -28,6 +29,9 @@ IMPL = {
     "profile_use": ptools.profile_use, "profile_save": ptools.profile_save,
     "profile_delete": ptools.profile_delete,
     "set_mode": mtools.set_mode,
+    "set_avatar": mtools.set_avatar,
+    "perchance_image": perchance.perchance_image,
+    "perchance_status": perchance.perchance_status,
 }
 
 
@@ -134,6 +138,15 @@ CORE_SPECS = [
           {"name": {"type": "string"}}, ["name"]),
     _spec("set_mode", "Change your own voice and avatar. Modes: malo, pro, gamer, ara.",
           {"mode": {"type": "string"}}, ["mode"]),
+    _spec("set_avatar", "Install an image file as a mode's avatar. Pair with "
+                        "perchance_image.",
+          {"mode": {"type": "string"}, "path": {"type": "string"}}, ["mode", "path"]),
+    _spec("perchance_image", "Generate an avatar with the Perchance furry generator. "
+                             "Drives a real Chrome window. Pass mode to install it directly.",
+          {"prompt": {"type": "string"}, "mode": {"type": "string"},
+           "style": {"type": "string"}, "ratio": {"type": "string"},
+           "timeout": {"type": "integer"}}, ["prompt"]),
+    _spec("perchance_status", "Check whether the generator browser is reachable.", {}, []),
 ]
 
 ANDROID_SPECS = [

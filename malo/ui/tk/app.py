@@ -321,6 +321,13 @@ class App:
         self.bubbles = []
         self.hold_bub = None
         self._zones()
+        self._avatar_mt = self._mtime()
+    
+    def _mtime(self):
+        try:
+            return os.path.getmtime(self.avatar_path)
+        except Exception:
+            return 0.0
 
     def _tick(self):
         self.rig.render()
@@ -666,6 +673,10 @@ class App:
         cur = personas.active(self.cfg)
         if cur != self._mode:
             self._switch_mode(cur)
+        mt = self._mtime()
+        if mt != self._avatar_mt:
+            self._avatar_mt = mt
+            self._rebuild_avatar()
         self.root.after(45, self._pump)
 
     def _handle(self, ev):
