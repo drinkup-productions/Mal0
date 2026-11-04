@@ -29,6 +29,8 @@ class App:
         self.waker = autonomy.Waker(self.rt.bus, self.cfg, self._wake_turn)
         self.selfdev = autonomy.SelfDevWaker(self.rt.bus, self.cfg, self._wake_turn)
         self.pend = None
+        self._pend_q = []
+        self._turn_reply = []
         self.last_user = ""
         self.last_bot = ""
         self.models = []
@@ -535,7 +537,7 @@ class App:
             self.cfg["model"] = want
             config.save()
         self.persona_changed(pid, want, True, personas.greeting(pid))
-        
+
         # Track the persona change
         try:
             from ..core import evolution
@@ -550,6 +552,10 @@ class App:
         self.history = []
         self._think_open = False
         self.bot_open = False
+        self._turn_reply = []
+        self._pend_q = []
+        self.pend = None
+        self.confirm_bar.pack_forget()
         self.txt.configure(state="normal")
         self.txt.delete("1.0", "end")
         self.txt.configure(state="disabled")
@@ -612,6 +618,7 @@ class App:
         self.last_user, self.last_bot = text, ""
         self.bot_open = False
         self._delta_buf = []
+        self._turn_reply = []
         self.streaming = True
         self.send_btn.configure(state="disabled")
         self.stop_btn.pack(fill="both", expand=True, pady=(4, 0))
@@ -646,6 +653,7 @@ class App:
         self.last_user, self.last_bot = "", ""
         self.bot_open = False
         self._delta_buf = []
+        self._turn_reply = []
         self.streaming = True
         self.send_btn.configure(state="disabled")
         self.stop_btn.pack(fill="both", expand=True, pady=(4, 0))
@@ -666,8 +674,19 @@ class App:
     def _approve(self, ok):
         if self.pend is not None:
             self.loop.approve(self.pend, ok)
-        self.pend = None
-        self.confirm_bar.pack_forget()
+        if self._pend_q:
+            self._pend_q.pop(0)
+        self._show_confirm()
+
+    def _show_confirm(self):
+        if not self._pend_q:
+            self.pend = None
+            self.confirm_bar.pack_forget()
+            return
+        pid, name, args = self._pend_q[0]
+        self.pend = pid
+        self.confirm_lbl.configure(text="run %s %s" % (name, str(args)[:90]))
+        self.confirm_bar.pack(fill="x", before=self.composer)
 
     def _pump(self):
         self.rt.bus.drain(self._handle)
@@ -691,6 +710,7 @@ class App:
                 self.set_state("working")
                 self.rig.talking = True
             self._delta_buf.append(ev["text"])
+            self._turn_reply.append(ev["text"])
         elif t == E.TOOL_RESULT:
             ok = ev.get("ok")
             self._ins(ev["text"][:600] + "\n", "toolout" if ok else "toolbad")
@@ -702,9 +722,8 @@ class App:
             self.react("star")
         elif t == E.CONFIRM:
             self.bot_open = False
-            self.pend = ev["id"]
-            self.confirm_lbl.configure(text="run %s %s" % (ev["name"], str(ev["args"])[:90]))
-            self.confirm_bar.pack(fill="x", before=self.composer)
+            self._pend_q.append((ev["id"], ev["name"], ev["args"]))
+            self._show_confirm()
         elif t == E.TURN:
             self._push_turn(ev.get("messages"))
             self._finish_turn()
@@ -761,6 +780,10 @@ class App:
         if self.loop.busy():
             # mid-turn: an approval is still outstanding, keep the bar and Stop live
             return
+        if self._turn_reply:
+            self.last_bot = "".join(self._turn_reply)[-600:]
+        self._turn_reply = []
+        self._pend_q = []
         self.streaming = False
         self.send_btn.configure(state="normal")
         self.stop_btn.pack_forget()

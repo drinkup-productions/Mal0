@@ -51,6 +51,12 @@ class Loop:
         elif self._engine:
             self._engine.release()
 
+    def busy(self):
+        """True while an approval is outstanding - the turn is still live."""
+        if self.mode == "letta" and self._chat:
+            return self._chat.busy()
+        return False
+
     def approve(self, pid, ok):
         if self.mode == "letta":
             if self._chat:
@@ -61,8 +67,3 @@ class Loop:
     def close(self):
         if self._chat:
             self._chat.close()
-    def busy(self):
-        if self.mode == "letta" and self._chat:
-            return self._chat.busy()
-        return False
-           

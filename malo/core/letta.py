@@ -245,6 +245,10 @@ class Chat:
             slot["ev"].set()
 
     def stop_turn(self):
+        for slot in list(self.pending.values()):
+            slot["ok"] = False
+            slot["ev"].set()
+        self.pending.clear()
         if self._loop and self._ws:
             asyncio.run_coroutine_threadsafe(self._abort(), self._loop)
 
