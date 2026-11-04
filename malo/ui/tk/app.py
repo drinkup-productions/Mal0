@@ -6,7 +6,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 
-from ...core import (autonomy, config, engine, events as E, feedback, ledger,
+from ...core import (autonomy, config, events as E, feedback, ledger, loop,
                      personas, provider)
 from ...core.log import log
 from ...tools import mcp, registry
@@ -50,7 +50,7 @@ class App:
         self._rsz_job = self._cal_job = self._pat_job = None
         self._cap_until = 0.0
         self._models_busy = False
-        self.engine = engine.Engine(self.rt.bus, self.cfg)
+        self.loop = loop.Loop(self.rt.bus, self.cfg)
         self.state = "idle"
 
         self.root.title("MalO ver1.1.0")
@@ -82,6 +82,7 @@ class App:
         self.root.bind_all("<Motion>", self._touch, add="+")
         self.root.bind_all("<KeyPress>", self._touch, add="+")
         self._pump()
+        self.loop.start()
         self.waker.start()
         try:
             self.root.mainloop()
@@ -112,7 +113,7 @@ class App:
         self.rt.quitting = True
         self.waker.halt()
         self.selfdev.halt()
-        self.engine.release()
+        self.loop.close()
         for fn in (mcp.stop_all, self.rt.audio.stop_all,
                    lambda: self.rt.tray.stop() if self.rt.tray else None):
             try:
@@ -617,7 +618,6 @@ class App:
         self.set_state("thinking")
         self.say("...", 4000)
         self.react("dots")
-        self.engine = engine.Engine(self.rt.bus, self.cfg)
         msgs = list(self.history)
         threading.Thread(target=self._run_engine, args=(msgs, model), daemon=True).start()
 
@@ -652,21 +652,20 @@ class App:
         self.set_state("thinking")
         wcfg = dict(self.cfg)
         wcfg["confirm"] = False
-        self.engine = engine.Engine(self.rt.bus, wcfg)
         threading.Thread(target=self._run_engine,
-                         args=(list(self.history), model, steps), daemon=True).start()
+                         args=(list(self.history), model, steps, wcfg),
+                         daemon=True).start()
 
-    def _run_engine(self, msgs, model, steps=None):
-        self.engine.run(msgs, model, self.rt.platform.name,
-                        max_steps=steps or engine.MAX_STEPS)
+    def _run_engine(self, msgs, model, steps=None, cfg=None):
+        self.loop.run(msgs, model, self.rt.platform.name,
+                      max_steps=steps or 0, cfg=cfg)
 
     def stop(self):
-        if self.engine:
-            self.engine.release()
+        self.loop.release()
 
     def _approve(self, ok):
         if self.pend is not None:
-            self.engine.approve(self.pend, ok)
+            self.loop.approve(self.pend, ok)
         self.pend = None
         self.confirm_bar.pack_forget()
 
@@ -757,6 +756,7 @@ class App:
         self.txt.see("end")
 
     def _finish_turn(self):
+        self.loop.restore()
         self._flush_delta()
         self.streaming = False
         self.send_btn.configure(state="normal")

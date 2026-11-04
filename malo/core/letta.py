@@ -196,6 +196,10 @@ class Chat:
         if slot:
             slot["ok"] = ok
             slot["ev"].set()
+            
+    def stop_turn(self):
+        if self._loop and self._ws:
+            asyncio.run_coroutine_threadsafe(self._abort(), self._loop)
 
     def _spawn(self, coro, label):
         task = asyncio.create_task(coro)
