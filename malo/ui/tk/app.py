@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import filedialog
 
 from ...core import (autonomy, config, events as E, feedback, ledger, loop,
-                     personas, provider)
+                     modes, personas, provider)
 from ...core.log import log
 from ...tools import mcp, registry
 from . import dialogs, theme
@@ -31,6 +31,7 @@ class App:
         self.pend = None
         self._pend_q = []
         self._turn_reply = []
+        self._wake_q = []
         self.last_user = ""
         self.last_bot = ""
         self.models = []
@@ -43,7 +44,8 @@ class App:
         self._delta_buf = []
         self.settings_win = None
         self.cal_win = None
-        self.base_avatar = personas.base_image(personas.active(self.cfg))
+        self._mode = personas.active(self.cfg)
+        self.base_avatar = personas.base_image(self._mode)
         self.avatar_path = self.base_avatar
         self.idle_since = time.time()
         self.evolved = False
@@ -61,7 +63,6 @@ class App:
         self.root.configure(bg=BG)
 
         self._build()
-        self._load_personas()
         self._apply_bg(self.cfg.get("background") or "bd-lav")
         self._rebuild_avatar()
         self._refresh_models()
@@ -175,14 +176,9 @@ class App:
         tk.Label(head, text="MalO", bg=BG, fg=FG,
                  font=("Segoe UI", 11, "bold")).pack(side="left")
 
-        self.persona_var = tk.StringVar(value=personas.active(self.cfg))
-        self.persona_menu = tk.OptionMenu(head, self.persona_var,
-                                          personas.active(self.cfg), command=self._set_persona)
-        self.persona_menu.configure(bg=PANEL, fg=FG, activebackground=BORDER,
-                                    activeforeground=FG, relief="flat",
-                                    highlightthickness=0, font=("Segoe UI", 8))
-        self.persona_menu["menu"].configure(bg=PANEL, fg=FG)
-        self.persona_menu.pack(side="left", padx=6)
+        self.lbl_mode = tk.Label(head, text=self._mode, bg=PANEL, fg=MUTED,
+                                 font=("Segoe UI", 8, "bold"), padx=8, pady=2)
+        self.lbl_mode.pack(side="left", padx=6)
 
         self.filter_var = tk.StringVar()
         fe = tk.Entry(head, textvariable=self.filter_var, width=10, bg=PANEL, fg=FG,
@@ -204,12 +200,13 @@ class App:
 
         strip = tk.Frame(right, bg=BG)
         strip.pack(fill="x", padx=12)
-        self.lbl_persona = self._stat(strip, "persona")
+        self.lbl_persona = self._stat(strip, "mode")
         self.lbl_mcp = self._stat(strip, "mcp")
         self.lbl_tools = self._stat(strip, "tools")
         self.lbl_tok = self._stat(strip, "session")
         self.lbl_ctx = self._stat(strip, "ctx")
         self.lbl_pats = self._stat(strip, "headpats")
+        self.lbl_persona.configure(text=self._mode)
 
         body = tk.Frame(right, bg=BG)
         body.pack(fill="both", expand=True, padx=12, pady=(6, 0))
@@ -382,6 +379,28 @@ class App:
         self.rig.rebuild()
         self._zones()
 
+    # ---- mode --------------------------------------------------------
+    def _switch_mode(self, pid):
+        if pid == self._mode or pid not in personas.PERSONAS:
+            return
+        self._mode = pid
+        self.lbl_mode.configure(text=pid)
+        self.lbl_persona.configure(text=pid)
+        self.base_avatar = personas.base_image(pid)
+        self.avatar_path = self.base_avatar
+        self.evolved = False
+        self.treat_stage = 0
+        self._rebuild_avatar()
+        self.react("dots")
+        g = personas.greeting(pid)
+        if g:
+            self.say(g, 2600)
+        try:
+            from ..core import evolution
+            evolution.track_mode_usage(pid)
+        except Exception:
+            pass
+
     # ---- idle evolve -------------------------------------------------
     def _evolve_spec(self):
         spec = (personas.PERSONAS.get(personas.active(self.cfg)) or {}).get("idle_evolve") or {}
@@ -468,7 +487,7 @@ class App:
         if self.rt.tray:
             self.rt.tray.set_text(name)
 
-    # ---- models / persona --------------------------------------------
+    # ---- models ------------------------------------------------------
     def _render_models(self):
         q = self.filter_var.get().lower()
         self.models = [m for m in self._all_models if not q or q in m.lower()]
@@ -519,66 +538,8 @@ class App:
         self.cfg["model"] = value
         config.save()
 
-    def _load_personas(self):
-        menu = self.persona_menu["menu"]
-        menu.delete(0, "end")
-        for p in personas.brief():
-            menu.add_command(label=p["label"], command=lambda v=p["id"]: self._set_persona(v))
-        self.persona_var.set(personas.active(self.cfg))
-        self.lbl_persona.configure(text=personas.active(self.cfg))
-
-    def _set_persona(self, pid):
-        if pid not in personas.PERSONAS:
-            return
-        self.cfg["persona"] = pid
-        config.save()
-        want = (personas.PERSONAS.get(pid) or {}).get("model") or ""
-        if want:
-            self.cfg["model"] = want
-            config.save()
-        self.persona_changed(pid, want, True, personas.greeting(pid))
-
-        # Track the persona change
-        try:
-            from ..core import evolution
-            evolution.track_mode_usage(pid)
-        except Exception as e:
-            print(f"Failed to track persona usage: {e}")
-
-    def persona_changed(self, pid, want, ok, greeting):
-        self.persona_var.set(pid)
-        self.lbl_persona.configure(text=pid)
-        self._flush_delta()
-        self.history = []
-        self._think_open = False
-        self.bot_open = False
-        self._turn_reply = []
-        self._pend_q = []
-        self.pend = None
-        self.confirm_bar.pack_forget()
-        self.txt.configure(state="normal")
-        self.txt.delete("1.0", "end")
-        self.txt.configure(state="disabled")
-        self.base_avatar = personas.base_image(pid)
-        self.avatar_path = self.base_avatar
-        self.idle_since = time.time()
-        self.evolved = False
-        if self._treat_job:
-            self.root.after_cancel(self._treat_job)
-            self._treat_job = None
-        self.treat_stage = 0
-        self._rebuild_avatar()
-        self._refresh_models()
-        if want and not ok:
-            self._ins("persona wants model %r - not loaded\n" % want, "sys")
-        if greeting:
-            self._ins("malo \u25b8 " + greeting + "\n", "bot")
-            self.history.append({"role": "assistant", "content": greeting})
-            self.say(greeting, 4000)
-            self.react("heart")
-
     def _greet(self):
-        g = personas.greeting(personas.active(self.cfg))
+        g = personas.greeting(self._mode)
         if not g:
             return
         self._ins("malo \u25b8 " + g + "\n", "bot")
@@ -610,6 +571,11 @@ class App:
         if not model or model == "(none loaded)":
             self.say("no model loaded", 1800)
             return
+        prev = self._mode
+        pid = modes.select(self.cfg, text, prev)
+        modes.apply(self.cfg, pid)
+        if pid != prev:
+            self._switch_mode(pid)
         if ledger.over_budget(float(self.cfg.get("budget_day") or 0)):
             self._ins("budget: $%.2f spent today\n" % ledger.SPEND["usd"], "sys")
         self.input.delete("1.0", "end")
@@ -632,11 +598,16 @@ class App:
         self.root.after(0, lambda: self._wake_now(kind, reason))
 
     def _wake_now(self, kind, reason):
-        if self.streaming:
+        if self.streaming or self.loop.busy():
+            self._wake_q = [(kind, reason)]
+            self._ins("[wake queued] %s\n" % reason, "sys")
+            log("wake queued: %s" % reason)
             return
         model = self.model_var.get()
         if not model or model == "(none loaded)":
-            return
+            if getattr(self.loop, "mode", "") != "letta":
+                return
+            model = ""
         if kind == "selfdev":
             brief = autonomy.SELFDEV_BRIEF
             steps = 0
@@ -647,6 +618,7 @@ class App:
             steps = 0
             tail = ("Reply in one sentence. Do not describe tools or list windows. "
                     "If nothing needs attention, reply exactly: nothing")
+        log("wake %s: %s" % (kind, reason))
         self._ins("[wake] %s\n" % reason, "sys")
         self.history.append({"role": "user", "content": (
             "[unattended %s wake] %s\n%s" % (kind, brief, tail))})
@@ -691,6 +663,9 @@ class App:
     def _pump(self):
         self.rt.bus.drain(self._handle)
         self._flush_delta()
+        cur = personas.active(self.cfg)
+        if cur != self._mode:
+            self._switch_mode(cur)
         self.root.after(45, self._pump)
 
     def _handle(self, ev):
@@ -778,7 +753,6 @@ class App:
         self.loop.restore()
         self._flush_delta()
         if self.loop.busy():
-            # mid-turn: an approval is still outstanding, keep the bar and Stop live
             return
         if self._turn_reply:
             self.last_bot = "".join(self._turn_reply)[-600:]
@@ -791,6 +765,9 @@ class App:
         self.pend = None
         self.rig.talking = False
         self.input.focus_set()
+        if self._wake_q:
+            kind, reason = self._wake_q.pop()
+            self.root.after(150, lambda: self._wake_now(kind, reason))
 
     # ---- feedback ----------------------------------------------------
     def _fb_refresh(self):
@@ -860,8 +837,7 @@ class App:
         if self._pat_job:
             self.root.after_cancel(self._pat_job)
         self._pat_job = self.root.after(1500, lambda: self.set_state("idle"))
-        feedback.add("good", "", self.last_user, self.last_bot,
-                     personas.active(self.cfg))
+        feedback.add("good", "", self.last_user, self.last_bot, self._mode)
         self._fb_refresh()
 
     def _wrong(self):
@@ -871,8 +847,7 @@ class App:
         self.set_state("confused")
         self.say("noted", 1600)
         self.rt.play_sfx(self.cfg.get("sfx_error"))
-        feedback.add("bad", note, self.last_user, self.last_bot,
-                     personas.active(self.cfg))
+        feedback.add("bad", note, self.last_user, self.last_bot, self._mode)
         self.fbnote.delete(0, "end")
         self._fb_refresh()
         if self.streaming:

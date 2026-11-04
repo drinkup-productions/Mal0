@@ -87,9 +87,13 @@ def _tool_specs():
 def _persona_blocks(cfg):
     pid = personas.active(cfg)
     p = personas.PERSONAS.get(pid) or {}
-    who = "\n\n".join(x for x in (p.get("self"), p.get("overlay")) if x)
     return pid, [
-        {"label": "persona", "value": who or "You are MalO."},
+        {"label": "persona", "value": (
+            "You are MalO: a purple-furred anthro wolf girl with a long spiky lavender "
+            "mane, a white bone skull mask, a white cropped tank, black cargo shorts and "
+            "two fluffy tails. Curious, a little eerie, quietly fond of the user. "
+            "Your voice and priorities are set per turn by the MODE block; you are the "
+            "same person in a different register.")},
         {"label": "human", "value": "The user owns this machine and runs you on it."},
     ]
 
@@ -114,6 +118,9 @@ def _context(cfg, text):
     """Per-turn state preamble. The system prompt holds the static guide."""
     bits = ["[context]"]
     bits.append("permissions: " + perm.report(cfg))
+    pid = personas.active(cfg)
+    bits.append("mode: %s (%s) - change it if the work changes"
+                % (pid, (personas.PERSONAS.get(pid) or {}).get("blurb") or ""))
     bits.append("state: " + presence.fragment())
     t = tasks.current()
     if t["text"]:
@@ -283,7 +290,7 @@ class Chat:
         tools, self._names = _tool_specs()
         self.bus.emit(E.ev(E.THINK, text="registering %d tools" % len(tools)))
         pid, blocks = _persona_blocks(self.cfg)
-        agent_id = (self.cfg.get("letta_agents") or {}).get(pid)
+        agent_id = (self.cfg.get("letta_agents") or {}).get("main")
         frame = {
             "type": "runtime_start",
             "request_id": "start-%d" % int(time.time() * 1000),
@@ -399,10 +406,9 @@ class Chat:
                 log("letta agent tools: %s" % (agent.get("tools"),))
                 aid = agent.get("id")
                 if aid:
-                    pid = personas.active(self.cfg)
                     agents = dict(self.cfg.get("letta_agents") or {})
-                    if agents.get(pid) != aid:
-                        agents[pid] = aid
+                    if agents.get("main") != aid:
+                        agents["main"] = aid
                         self.cfg["letta_agents"] = agents
                         config.save()
             if self._started:

@@ -38,6 +38,10 @@ DEFAULT_CFG = {
     "idle_evolve": True,
     "idle_evolve_minutes": 10,
     "budget_day": 0.0,
+    "modes": True,
+    "mode_threshold": 2.0,
+    "mode_learning": True,
+    "mode_gain": 0.8,
     # audio
     "sfx": True,
     "sfx_volume": 80,

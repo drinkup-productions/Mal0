@@ -1,7 +1,7 @@
 """System prompt assembly."""
 import time
 
-from . import feedback, memory, perm, personas, presence, profiles, tasks
+from . import feedback, memory, modes, perm, personas, presence, profiles, tasks
 
 SHELLS = {
     "windows": ("the platform shell - Windows PowerShell 5.1",
@@ -140,13 +140,31 @@ RULES
 """
 
 
+def _mode_block(cfg, pid, p):
+    return (
+        "MODE\n"
+        "You are in '%s' mode: %s\n"
+        "You choose this yourself from what the user asked. General chatter and ordinary "
+        "questions stay '%s'. Code, files, logs, debugging, research or anything with a "
+        "path in it goes to 'pro'. Banter, jokes, complaints or short bursts go to 'gamer'. "
+        "Warmth, comfort, greetings after a gap or the user sounding tired go to 'ara'.\n"
+        "Switching changes your voice and your avatar. Your body, memory and history stay "
+        "the same - you are the same person in a different register.\n"
+        "If the user names a mode, or prefixes @mode, take it without arguing. "
+        "Never ask which mode to use. If you get it wrong they will correct you and you "
+        "will read that correction next time.\n"
+        "Learned bias from feedback: %s"
+        % (pid, p.get("blurb") or "", modes.BUILTIN, modes.brief_bias(cfg))
+    )
+
+
 def build(cfg, platform_name="windows", query=""):
     line, rule = SHELLS.get(platform_name, ("the platform shell - sh",
                                             "- The shell is sh: chain with ; or &&."))
     guide = TOOL_GUIDE.replace("@SHELL@", line).replace("@SHELLRULE@", rule)
     pid = personas.active(cfg)
     p = personas.PERSONAS.get(pid) or {}
-    parts = [p.get("self") or "", p.get("overlay") or "", IDENTITY]
+    parts = [p.get("self") or "", p.get("overlay") or "", _mode_block(cfg, pid, p), IDENTITY]
     if cfg.get("memory", True):
         rows = memory.recall(query, int(cfg.get("memory_limit") or 10),
                              budget=int(cfg.get("memory_budget") or 1800))

@@ -1,6 +1,6 @@
 """Tool specs, dispatch and the confirm set."""
-from . import (android as atools, core, input as itools, mcp, profiles as ptools,
-               selfdev as sdev, skills as stools, uia, vision)
+from . import (android as atools, core, input as itools, mcp, modes as mtools,
+               profiles as ptools, selfdev as sdev, skills as stools, uia, vision)
 from ..core import config, perm, skills
 from ..platform import current
 
@@ -27,6 +27,7 @@ IMPL = {
     "profile_list": ptools.profile_list, "profile_show": ptools.profile_show,
     "profile_use": ptools.profile_use, "profile_save": ptools.profile_save,
     "profile_delete": ptools.profile_delete,
+    "set_mode": mtools.set_mode,
 }
 
 
@@ -131,6 +132,8 @@ CORE_SPECS = [
            "windows": {"type": "string"}, "brief": {"type": "string"}}, ["name"]),
     _spec("profile_delete", "Delete a profile.",
           {"name": {"type": "string"}}, ["name"]),
+    _spec("set_mode", "Change your own voice and avatar. Modes: malo, pro, gamer, ara.",
+          {"mode": {"type": "string"}}, ["mode"]),
 ]
 
 ANDROID_SPECS = [
