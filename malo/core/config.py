@@ -76,6 +76,8 @@ DEFAULT_CFG = {
     "chrome_path": "",
     "perchance_headless": False,
     "perchance_timeout": 180,
+    "ocr_engine": "auto",
+    "ocr_dml": False,
 }
 
 CFG = {}

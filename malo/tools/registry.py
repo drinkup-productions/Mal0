@@ -1,7 +1,7 @@
 """Tool specs, dispatch and the confirm set."""
 from . import (android as atools, core, input as itools, mcp, modes as mtools,
-               perchance, profiles as ptools, selfdev as sdev, skills as stools,
-               uia, vision)
+               perchance, profiles as ptools, screen, selfdev as sdev,
+               skills as stools, uia, vision)
 from ..core import config, perm, skills
 from ..platform import current
 
@@ -32,6 +32,10 @@ IMPL = {
     "set_avatar": mtools.set_avatar,
     "perchance_image": perchance.perchance_image,
     "perchance_status": perchance.perchance_status,
+    "perchance_debug": perchance.perchance_debug,
+    "screen_look": screen.look, "screen_find": screen.find,
+    "screen_click": screen.click_text, "screen_wait": screen.wait_for,
+    "screen_read": screen.read,
 }
 
 
@@ -147,6 +151,20 @@ CORE_SPECS = [
            "style": {"type": "string"}, "ratio": {"type": "string"},
            "timeout": {"type": "integer"}}, ["prompt"]),
     _spec("perchance_status", "Check whether the generator browser is reachable.", {}, []),
+    _spec("perchance_debug", "Dump the generator page's editable controls and "
+                             "shadow roots. Use when a perchance lookup fails.", {}, []),
+    _spec("screen_look", "Capture and OCR the screen. Returns text with centre "
+                         "coordinates so you can click what you see.",
+          {"monitor": {"type": "integer"}, "limit": {"type": "integer"}}, []),
+    _spec("screen_find", "Locate one on-screen label. Returns its coordinates.",
+          {"text": {"type": "string"}, "exact": {"type": "boolean"}}, ["text"]),
+    _spec("screen_click", "Click an on-screen label by its text.",
+          {"text": {"type": "string"}, "exact": {"type": "boolean"}}, ["text"]),
+    _spec("screen_wait", "Wait until a label appears on screen.",
+          {"text": {"type": "string"}, "timeout": {"type": "integer"}}, ["text"]),
+    _spec("screen_read", "OCR one rectangle of the screen.", 
+          {"x": {"type": "integer"}, "y": {"type": "integer"},
+           "w": {"type": "integer"}, "h": {"type": "integer"}}, ["x", "y", "w", "h"]),
 ]
 
 ANDROID_SPECS = [

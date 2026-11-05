@@ -1,9 +1,9 @@
-"""Drive the Perchance AI Furry Generator in a real Chrome window.
+"""Drive the Perchance AI Furry Generator with the real keyboard and mouse.
 
-No Selenium and no driver download: Chrome is launched with the DevTools
-protocol open and driven over it. Clicks are real mouse events and typing is
-Input.insertText, so the page sees a person at the keyboard. A persistent
-profile keeps the Cloudflare cookie and the dismissed overlays.
+Chrome runs with the DevTools protocol open so the finished image can be lifted
+out of the DOM, but every click and keystroke is a real one and the page is read
+with OCR. The composer is in a closed shadow root, so nothing here uses
+selectors.
 """
 import base64
 import json
@@ -17,6 +17,8 @@ import uuid
 from ..core import config
 from ..core.config import paths
 from ..core.log import log
+from ..platform import current
+from . import input as itools, screen
 
 try:
     from websockets.sync.client import connect as _ws_connect
@@ -25,6 +27,7 @@ except Exception:
 
 URL = "https://perchance.org/ai-furry-generator"
 PORT = 9222
+TITLE_HINTS = ("perchance", "furry generator", "ai furry")
 
 CHROME_PATHS = (
     r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
@@ -34,81 +37,45 @@ CHROME_PATHS = (
     r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
 )
 
-DISMISS = ("i understand", "i am 18 or older", "i know the rules", "got it",
-           "don't show this again", "dont show this again", "ok", "close", "accept")
-
-# One pass over the page: find the prompt box and the Generate button, and
-# collect anything covering them. Rects only, no clicking from here.
-_LOCATE = r"""
-(() => {
-  const vis = e => {
-    const r = e.getBoundingClientRect();
-    const s = getComputedStyle(e);
-    return r.width > 4 && r.height > 4 && s.visibility !== 'hidden'
-           && s.display !== 'none' && r.top < innerHeight && r.bottom > 0;
-  };
-  const box = e => { const r = e.getBoundingClientRect();
-    return {x: r.x, y: r.y, w: r.width, h: r.height}; };
-  const label = e => {
-    let t = (e.getAttribute('aria-label') || '') + ' ' + (e.placeholder || '');
-    const l = e.closest('label');
-    if (l) t += ' ' + l.innerText;
-    let p = e.parentElement, n = 0;
-    while (p && n++ < 4) { t += ' ' + (p.innerText || '').slice(0, 120); p = p.parentElement; }
-    return t.toLowerCase();
-  };
-
-  let prompt = null;
-  const areas = [...document.querySelectorAll('textarea, [contenteditable="true"]')]
-    .filter(vis);
-  if (areas.length) {
-    const scored = areas.map(e => {
-      const l = label(e);
-      let s = 0;
-      if (/prompt|describe|description/.test(l)) s += 10;
-      if (e.id === 'description') s += 20;
-      if (e.tagName === 'TEXTAREA') s += 3;
-      const r = e.getBoundingClientRect();
-      s += Math.min(5, r.width * r.height / 40000);
-      return [s, e];
-    }).sort((a, b) => b[0] - a[0]);
-    prompt = box(scored[0][1]);
-  }
-
-  let go = null;
-  const hits = [...document.querySelectorAll('button, [role="button"], div, a, span')]
-    .filter(e => vis(e) && (e.innerText || '').trim().toLowerCase() === 'generate')
-    .map(e => [e.getBoundingClientRect().width, e])
-    .sort((a, b) => b[0] - a[0]);
-  if (hits.length) go = box(hits[0][1]);
-
-  const gates = [...document.querySelectorAll('button, [role="button"], a, div')]
-    .filter(e => {
-      if (!vis(e)) return false;
-      const t = (e.innerText || '').trim().toLowerCase();
-      if (t.length > 40) return false;
-      return %s.some(w => t === w || t.startsWith(w));
-    })
-    .map(e => box(e)).slice(0, 6);
-
-  return {prompt: prompt, go: go, gates: gates};
-})()
-"""
-
 _COUNT = r"""
-(() => [...document.querySelectorAll('img')]
-  .filter(i => (i.currentSrc || i.src || '').startsWith('data:image')).length)()
+(() => {
+  let n = 0;
+  const walk = r => {
+    if (!r) return;
+    try { n += r.querySelectorAll('img[src^="data:image"]').length; } catch (e) {}
+    let all;
+    try { all = r.querySelectorAll('*'); } catch (e) { return; }
+    for (const e of all) {
+      if (e.shadowRoot) walk(e.shadowRoot);
+      if (e.tagName === 'IFRAME') { try { walk(e.contentDocument); } catch (err) {} }
+    }
+  };
+  walk(document);
+  return n;
+})()
 """
 
 _NEW_IMG = r"""
 (async () => {
-  const ok = [...document.querySelectorAll('img')].filter(i => {
-    const s = i.currentSrc || i.src || '';
-    return s.startsWith('data:image') || s.startsWith('blob:');
-  });
-  if (!ok.length) return null;
-  const i = ok[ok.length - 1];
-  const s = i.currentSrc || i.src;
+  const picks = [];
+  const walk = r => {
+    if (!r) return;
+    try {
+      for (const i of r.querySelectorAll('img')) {
+        const s = i.currentSrc || i.src || '';
+        if (s.startsWith('data:image') || s.startsWith('blob:')) picks.push(i);
+      }
+    } catch (e) {}
+    let all;
+    try { all = r.querySelectorAll('*'); } catch (e) { return; }
+    for (const e of all) {
+      if (e.shadowRoot) walk(e.shadowRoot);
+      if (e.tagName === 'IFRAME') { try { walk(e.contentDocument); } catch (err) {} }
+    }
+  };
+  walk(document);
+  if (!picks.length) return null;
+  const s = picks[picks.length - 1].currentSrc || picks[picks.length - 1].src;
   if (s.startsWith('data:')) return s;
   const b = await fetch(s).then(r => r.blob());
   return await new Promise(res => {
@@ -187,13 +154,6 @@ class _Cdp:
                       awaitPromise=True)
         return (r.get("result") or {}).get("value")
 
-    def click(self, rect):
-        x = rect["x"] + rect["w"] / 2.0
-        y = rect["y"] + rect["h"] / 2.0
-        for kind in ("mousePressed", "mouseReleased"):
-            self.call("Input.dispatchMouseEvent", type=kind, x=x, y=y,
-                      button="left", clickCount=1)
-
     def close(self):
         try:
             self.ws.close()
@@ -201,44 +161,111 @@ class _Cdp:
             pass
 
 
-def _connect(timeout=40):
-    if _ws_connect is None:
-        raise RuntimeError("websockets is not installed")
-    if not _probe():
-        exe = _chrome()
-        if not exe:
-            raise RuntimeError("Chrome not found - set chrome_path in settings")
-        args = [exe, "--remote-debugging-port=%d" % PORT,
-                "--user-data-dir=" + _profile(), "--no-first-run",
-                "--no-default-browser-check", "--start-maximized",
-                "--disable-blink-features=AutomationControlled", URL]
-        if config.CFG.get("perchance_headless"):
-            args.insert(1, "--headless=new")
-        log("perchance: launching %s" % exe)
-        subprocess.Popen(args, close_fds=True)
-        end = time.time() + timeout
-        while time.time() < end:
-            if _probe():
-                break
-            time.sleep(0.5)
-        else:
-            raise RuntimeError("Chrome never opened the debug port")
-    return _Cdp(_page_ws())
-
-
-def _settle(c, rounds=3):
-    """Close the age gate, privacy notice and rules dialogs."""
-    for _ in range(rounds):
-        found = c.js(_LOCATE % json.dumps(list(DISMISS))) or {}
-        gates = found.get("gates") or []
-        if not gates:
+def _ensure_chrome(timeout=40):
+    if _probe():
+        return
+    exe = _chrome()
+    if not exe:
+        raise RuntimeError("Chrome not found - set chrome_path in settings")
+    args = [exe, "--remote-debugging-port=%d" % PORT,
+            "--user-data-dir=" + _profile(), "--no-first-run",
+            "--no-default-browser-check", "--start-maximized",
+            "--force-renderer-accessibility",
+            "--disable-blink-features=AutomationControlled", URL]
+    if config.CFG.get("perchance_headless"):
+        args.insert(1, "--headless=new")
+    log("perchance: launching %s" % exe)
+    subprocess.Popen(args, close_fds=True)
+    end = time.time() + timeout
+    while time.time() < end:
+        if _probe():
             return
-        for g in gates[:3]:
-            try:
-                c.click(g)
-            except Exception:
-                pass
+        time.sleep(0.5)
+    raise RuntimeError("Chrome never opened the debug port")
+
+
+def _focus():
+    """Bring the generator window forward. Returns its hwnd."""
+    try:
+        wins = current().windows(80)
+    except Exception as exc:
+        raise RuntimeError("cannot list windows: %s" % exc)
+    for w in wins:
+        t = (w.get("title") or "").lower()
+        if any(h in t for h in TITLE_HINTS):
+            current().focus_window(w["hwnd"])
+            time.sleep(0.6)
+            return w["hwnd"]
+    for w in wins:
+        if "chrome" in (w.get("proc") or "").lower():
+            current().focus_window(w["hwnd"])
+            time.sleep(0.6)
+            return w["hwnd"]
+    raise RuntimeError("no Chrome window found")
+
+
+def _settle(rounds=3):
+    for _ in range(rounds):
+        hit = None
+        for label in ("I understand", "I am 18 or older", "I know the rules", "OK"):
+            hit = screen.find(label, exact=True)
+            if "error" not in hit:
+                break
+            hit = None
+        if not hit:
+            return
+        itools.mouse_move(hit["cx"], hit["cy"])
+        itools.click()
         time.sleep(0.4)
+
+
+def _find_go(tries=3):
+    """Find the Generate button, tolerating a clipped first letter."""
+    for _ in range(tries):
+        for needle in ("Generate", "enerate", "nerate", "Generat"):
+            hit = screen.find(needle)
+            if "error" not in hit:
+                return hit
+        time.sleep(1.0)
+    return {"error": "cannot see the Generate button"}
+
+
+def _candidates(go, label, typed):
+    """Points to try for the prompt box, most likely first."""
+    pts = []
+    if typed:
+        pts.append((typed["cx"], typed["cy"]))
+    if label:
+        pts.append((label["cx"] + 80, label["cy"] + 34))
+        pts.append((label["cx"] + 80, label["cy"] + 20))
+    if go:
+        for dy in (90, 120, 150, 190, 230, 270, 310):
+            pts.append((go["cx"] - 120, max(8, go["cy"] - dy)))
+    return pts
+
+
+def _aim_and_type(prompt, go):
+    """Click into the composer and type. Returns (x, y, landed)."""
+    mark = prompt[:18].lower()
+    got = screen.look(limit=300)
+    typed = None
+    for r in got.get("rows") or []:
+        if mark[:8] and mark[:8] in r["text"].lower():
+            typed = r
+            break
+    label = screen.find("Prompt")
+    label = None if "error" in label else label
+    x = y = 0
+    for x, y in _candidates(go, label, typed):
+        itools.mouse_move(x, y)
+        itools.click()
+        time.sleep(0.2)
+        itools.key("ctrl a")
+        itools.type_text(prompt)
+        time.sleep(0.5)
+        if mark in (screen.look(limit=300).get("text") or "").lower():
+            return x, y, True
+    return x, y, False
 
 
 def _write(data_url, folder, name):
@@ -256,7 +283,7 @@ def _write(data_url, folder, name):
 
 
 def perchance_image(prompt="", mode="", style="", ratio="", timeout=0):
-    """Generate an avatar on Perchance and save it. Optionally install it on a mode."""
+    """Generate an avatar on Perchance. Optionally install it on a mode."""
     prompt = (prompt or "").strip()
     if not prompt:
         return {"error": "prompt is required"}
@@ -265,36 +292,30 @@ def perchance_image(prompt="", mode="", style="", ratio="", timeout=0):
     wait = float(timeout or config.CFG.get("perchance_timeout") or 180)
     c = None
     try:
-        c = _connect()
+        _ensure_chrome()
+        hwnd = _focus()
+        c = _Cdp(_page_ws())
         c.call("Page.enable")
         c.call("Runtime.enable")
-        try:
-            c.call("Page.bringToFront")
-        except Exception:
-            pass
+        _settle()
 
-        if "perchance" not in (c.js("location.href") or ""):
-            c.call("Page.navigate", url=URL)
-            time.sleep(4)
+        go = _find_go()
+        if "error" in go:
+            got = screen.look(limit=300)
+            return {"error": go["error"], "hwnd": hwnd,
+                    "on_screen": got.get("text")}
 
-        _settle(c)
-        found = c.js(_LOCATE % json.dumps(list(DISMISS))) or {}
-        target = found.get("prompt")
-        if not target:
-            return {"error": "could not find the prompt box on the page"}
+        x, y, landed = _aim_and_type(prompt, go)
+        log("perchance: typed %d chars at %d,%d landed=%s"
+            % (len(prompt), x, y, landed))
 
-        c.click(target)
-        time.sleep(0.2)
-        c.call("Input.insertText", text=prompt)
-        time.sleep(0.3)
-
-        found = c.js(_LOCATE % json.dumps(list(DISMISS))) or {}
-        go = found.get("go")
-        if not go:
-            return {"error": "could not find the Generate button"}
+        go = _find_go()
+        if "error" in go:
+            return {"error": "lost the Generate button", "landed": landed}
         before = c.js(_COUNT) or 0
-        c.click(go)
-        log("perchance: submitted %d chars" % len(prompt))
+        itools.mouse_move(go["cx"], go["cy"])
+        itools.click()
+        log("perchance: clicked Generate at %d,%d" % (go["cx"], go["cy"]))
 
         end = time.time() + wait
         url = None
@@ -305,11 +326,12 @@ def perchance_image(prompt="", mode="", style="", ratio="", timeout=0):
                 if url:
                     break
         if not url:
-            return {"error": "no image appeared within %ds" % int(wait)}
+            return {"error": "no image appeared within %ds" % int(wait),
+                    "landed": landed}
 
         tag = uuid.uuid4().hex[:8]
         saved = _write(url, paths().output, "perchance_" + tag)
-        out = {"ok": True, "path": saved, "prompt": prompt,
+        out = {"ok": True, "path": saved, "prompt": prompt, "landed": landed,
                "bytes": os.path.getsize(saved)}
         mode = (mode or "").strip().lower()
         if mode:
@@ -327,6 +349,19 @@ def perchance_image(prompt="", mode="", style="", ratio="", timeout=0):
     finally:
         if c:
             c.close()
+
+
+def perchance_debug():
+    """What is on screen right now, as OCR sees it."""
+    try:
+        got = screen.look(limit=120)
+        return {"url": (_http("/json") and "ok") if _probe() else "no debug port",
+                "count": got.get("count"),
+                "generate": screen.find("Generate"),
+                "prompt_label": screen.find("Prompt"),
+                "on_screen": got.get("text")}
+    except Exception as exc:
+        return {"error": "%s: %s" % (type(exc).__name__, exc)}
 
 
 def perchance_status():

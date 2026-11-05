@@ -21,10 +21,15 @@ CLASS = {
     "notify": "system", "open_app": "system",
     # self-modification
     "propose": "selfedit", "apply": "selfedit",
+    "perchance_image": "network", "perchance_status": "network",
+    "perchance_debug": "network",
+    # screen
+    "screen_look": "screen", "screen_find": "screen", "screen_click": "screen",
+    "screen_wait": "screen", "screen_read": "screen",
 }
 
 DEFAULTS = {"read": True, "write": True, "shell": True, "input": True,
-            "system": True, "network": True, "selfedit": False}
+            "screen": True, "system": True, "network": True, "selfedit": False}
 
 
 def cls(name):

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 from ctypes import wintypes
+import time
 
 from ..core.log import log
 from .base import Audio, Paths, Platform
@@ -30,6 +31,19 @@ class RECT(ctypes.Structure):
 class MONITORINFO(ctypes.Structure):
     _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", RECT),
                 ("rcWork", RECT), ("dwFlags", ctypes.c_ulong)]
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("ki", _KEYBDINPUT), ("pad", ctypes.c_byte * 32)]
+
+
+class _INPUT(ctypes.Structure):
+    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
 
 
 class LASTINPUTINFO(ctypes.Structure):
@@ -287,24 +301,35 @@ class Windows(Platform):
         return True
 
     def type_text(self, text):
+        """Type unicode text with SendInput. Leaves the clipboard alone."""
         u32 = ctypes.windll.user32
-        k32 = ctypes.windll.kernel32
-        buf = ctypes.create_unicode_buffer(str(text))
-        size = ctypes.sizeof(buf)
-        u32.OpenClipboard(None)
-        try:
-            u32.EmptyClipboard()
-            h = k32.GlobalAlloc(0x0042, size)
-            p = k32.GlobalLock(h)
-            ctypes.memmove(p, buf, size)
-            k32.GlobalUnlock(h)
-            u32.SetClipboardData(13, h)
-        finally:
-            u32.CloseClipboard()
-        u32.keybd_event(0x11, 0, 0, 0)
-        u32.keybd_event(0x56, 0, 0, 0)
-        u32.keybd_event(0x56, 0, 0x0002, 0)
-        u32.keybd_event(0x11, 0, 0x0002, 0)
+        u32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
+        u32.SendInput.restype = wintypes.UINT
+        units = []
+        for ch in str(text):
+            o = ord(ch)
+            if o > 0xFFFF:
+                o -= 0x10000
+                units.append(0xD800 + (o >> 10))
+                units.append(0xDC00 + (o & 0x3FF))
+            else:
+                units.append(o)
+        if not units:
+            return True
+        step = 64
+        for i in range(0, len(units), step):
+            chunk = units[i:i + step]
+            arr = (_INPUT * (len(chunk) * 2))()
+            for j, unit in enumerate(chunk):
+                for k, flags in ((0, 0x0004), (1, 0x0004 | 0x0002)):
+                    e = arr[j * 2 + k]
+                    e.type = 1
+                    e.u.ki.wVk = 0
+                    e.u.ki.wScan = unit
+                    e.u.ki.dwFlags = flags
+            if not u32.SendInput(len(arr), arr, ctypes.sizeof(_INPUT)):
+                return False
+            time.sleep(0.01)
         return True
 
     def make_tray(self):
