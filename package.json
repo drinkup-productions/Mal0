@@ -1,0 +1,8 @@
+{
+  "name": "malo-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@letta-ai/letta-agent-sdk": "latest"
+  }
+}

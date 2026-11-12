@@ -9,3 +9,4 @@ dist/
 .buildozer/
 .pytest_cache/
 tests/evals/results/*.json
+node_modules/

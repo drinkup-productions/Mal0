@@ -1,0 +1,13 @@
+{
+  "ddg": {
+    "type": "stdio",
+    "command": "uvx",
+    "args": ["duckduckgo-mcp-server"]
+  },
+  "desk": {
+    "type": "stdio",
+    "command": "desk-mcp",
+    "args": [],
+    "env": { "DESK_UI_TIMEOUT_MS": "8000" }
+  }
+}
