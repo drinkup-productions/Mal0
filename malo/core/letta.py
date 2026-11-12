@@ -114,7 +114,7 @@ def _system(cfg):
     )
 
 
-def _context(cfg, text):
+def _context(cfg, text, names=()):
     """Per-turn state preamble. The system prompt holds the static guide."""
     bits = ["[context]"]
     bits.append("permissions: " + perm.report(cfg))
@@ -141,6 +141,7 @@ def _context(cfg, text):
         except Exception as exc:
             log("letta context memory: %s" % exc)
     bits.append("[/context]")
+    bits.append("tools this turn: " + (", ".join(sorted(names)) or "none"))
     return "\n".join(bits)
 
 
@@ -468,21 +469,24 @@ class Chat:
         full = _clean(raw)
         if not full.strip():
             return
-        already = self._emitted.get(mid, "")
+        already = self._emitted.get(mid)
+        if already is None:
+            norm = _norm(full)
+            if norm and len(norm) > 40 and norm in self._turn_norm:
+                log("letta dropped repeated message (%d chars)" % len(norm))
+                self._emitted[mid] = full
+                return
+            if norm:
+                self._turn_norm.append(norm)
+            self._emitted[mid] = full
+            self.bus.emit(E.ev(E.DELTA, text=full))
+            return
         if full == already:
             return
-        new = full[len(already):] if (already and full.startswith(already)) else full
+        new = full[len(already):] if full.startswith(already) else full
         self._emitted[mid] = full
-        if not new.strip():
-            return
-        norm = _norm(new)
-        if norm and any(norm == n or (len(norm) > 40 and norm in n)
-                        for n in self._turn_norm):
-            log("letta dropped repeated text (%d chars)" % len(norm))
-            return
-        if norm:
-            self._turn_norm.append(norm)
-        self.bus.emit(E.ev(E.DELTA, text=new))
+        if new.strip():
+            self.bus.emit(E.ev(E.DELTA, text=new))
 
     async def _send_decision(self, rid, allow, message):
         payload = {"kind": "approval_response", "request_id": rid,

@@ -147,6 +147,10 @@ RULES
 - Search your own source with code_grep, not bash. The repo path is absolute.
 - No head, tail or Unix find. Use Get-ChildItem -Recurse -Filter *.py and Select-Object -First 5.
 - While unattended, end with journal(text) if you learned or started something worth keeping.
+- Only the tools named in the context 'tools this turn' line exist. If the one you want is
+  absent, name it once and do the job another way. Never claim a capability you cannot see.
+- The journal is not a to-do list. Work the current message. Only pick the journal back up
+  if the user asks about it or you are on an unattended wake.
 """
 
 
