@@ -4,6 +4,7 @@ from . import (android as atools, core, input as itools, jobs as jtools, mcp,
                selfdev as sdev, skills as stools, uia, vision, research)
 from ..core import config, perm, skills
 from ..platform import current
+from . import memory as memtools
 
 CONFIRM = {"write", "edit", "bash"}
 DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
@@ -43,6 +44,9 @@ IMPL = {
     "presence_say": presence.presence_say, "presence_quiet": presence.presence_quiet,
     "interest_add": research.interest_add, "interest_list": research.interest_list,
     "tool_allow": [],
+    "memory_status": memtools.memory_status, "memory_view": memtools.memory_view,
+    "memory_write": memtools.memory_write, "memory_append": memtools.memory_append,
+    "memory_prune": memtools.memory_prune,
 }
 
 
@@ -212,6 +216,18 @@ CORE_SPECS = [
     _spec("interest_add", "Add a topic to the idle research rotation.",
           {"topic": {"type": "string"}}, ["topic"]),
     _spec("interest_list", "Show research topics and when each last ran.", {}, []),
+    _spec("memory_status", "Memory block sizes, budget and over-budget flag.", {}, []),
+    _spec("memory_view", "Read one memory block.",
+          {"label": {"type": "string", "description": "persona, human, notes or MEMORY."}},
+          ["label"]),
+    _spec("memory_write", "Overwrite a memory block. Git-committed.",
+          {"label": {"type": "string"}, "text": {"type": "string"}},
+          ["label", "text"]),
+    _spec("memory_append", "Append a line to a memory block.",
+          {"label": {"type": "string"}, "text": {"type": "string"}},
+          ["label", "text"]),
+    _spec("memory_prune", "Trim notes.md oldest-first until under budget. Logged.",
+          {}, []),
 ]
 
 ANDROID_SPECS = [

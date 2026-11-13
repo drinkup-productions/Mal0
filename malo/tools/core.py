@@ -241,16 +241,27 @@ def bash(command, cwd=None, timeout=180):
 
 
 def remember(text, kind="user", importance=0.5):
+    from ..core import memctl
     text = (text or "").strip()
     if not text:
         return {"error": "nothing to remember"}
-    mid = memory.add(text, kind, importance, source="tool")
-    return {"saved": text, "id": mid}
+    label = "human" if kind == "user" else "notes"
+    memctl.append(label, text, "remember")
+    return {"saved": text, "block": label}
 
 
-def forget(mid=None, text=None):
-    n = memory.forget(mid, text)
-    return {"removed": n} if n else {"error": "nothing matched"}
+def forget(text=None, mid=None):
+    from ..core import memctl
+    if not text:
+        return {"error": "give the text to forget"}
+    hits = 0
+    for label in ("notes", "human"):
+        body = memctl.read(label)
+        kept = [l for l in body.splitlines() if text not in l]
+        if len(kept) != len(body.splitlines()):
+            hits += len(body.splitlines()) - len(kept)
+            memctl.write(label, "\n".join(kept) + ("\n" if kept else ""), "forget")
+    return {"removed": hits} if hits else {"error": "nothing matched"}
 
 
 def journal(text, keep=12):

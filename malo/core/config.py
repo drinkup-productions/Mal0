@@ -92,6 +92,7 @@ DEFAULT_CFG = {
     "interests": [],
     "interest_recent": {},
     "research_idle_min": 45,
+    "memory_budget_tokens": 800,
 }
 
 CFG = {}
