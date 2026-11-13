@@ -1,12 +1,12 @@
 """Tool specs, dispatch and the confirm set."""
 from . import (android as atools, core, input as itools, jobs as jtools, mcp,
                modes as mtools, perchance, presence, profiles as ptools, screen,
-               selfdev as sdev, skills as stools, uia, vision, research)
+               selfdev as sdev, skills as stools, uia, vision, research, restart as rtools)
 from ..core import config, perm, skills
 from ..platform import current
 from . import memory as memtools
 
-CONFIRM = {"write", "edit", "bash"}
+CONFIRM = {"write", "edit", "bash", "restart"}
 DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
                 "mouse_move", "click", "scroll", "key", "type_text",
                 "uia_tree", "uia_find", "uia_act"}
@@ -43,10 +43,10 @@ IMPL = {
     "presence_show": presence.presence_show, "presence_hide": presence.presence_hide,
     "presence_say": presence.presence_say, "presence_quiet": presence.presence_quiet,
     "interest_add": research.interest_add, "interest_list": research.interest_list,
-    "tool_allow": [],
     "memory_status": memtools.memory_status, "memory_view": memtools.memory_view,
     "memory_write": memtools.memory_write, "memory_append": memtools.memory_append,
     "memory_prune": memtools.memory_prune,
+    "restart": rtools.restart,
 }
 
 
@@ -228,6 +228,10 @@ CORE_SPECS = [
           ["label", "text"]),
     _spec("memory_prune", "Trim notes.md oldest-first until under budget. Logged.",
           {}, []),
+    _spec("restart", "Restart yourself so an applied change takes effect. Call it as "
+                     "the LAST action of a turn, then stop.",
+          {"delay": {"type": "integer", "description": "Seconds before the kill. Default 3."}},
+          []),
 ]
 
 ANDROID_SPECS = [
@@ -245,7 +249,14 @@ def all_specs():
         specs += ANDROID_SPECS
     if name != "windows":
         specs = [s for s in specs if s["function"]["name"] not in DESKTOP_ONLY]
-    return specs + mcp.tool_specs()
+    seen, out = set(), []
+    for s in specs:
+        n = s["function"]["name"]
+        if n in seen:
+            continue
+        seen.add(n)
+        out.append(s)
+    return out + mcp.tool_specs()
 
 
 def run(name, args):

@@ -2,7 +2,7 @@
 import json
 import os
 import subprocess
-
+import shutil
 from . import config
 from .log import log
 
@@ -25,12 +25,20 @@ def _path(label):
     return os.path.join(root(), label + ".md")
 
 
+def _exe(name):
+    found = shutil.which(name)
+    if not found:
+        return []
+    return ["cmd", "/c", found] if found.lower().endswith((".cmd", ".bat")) else [found]
+
+
 def _git(*args):
     d = root()
-    if not d or not os.path.isdir(d):
+    base = _exe("git")
+    if not d or not os.path.isdir(d) or not base:
         return ""
     try:
-        out = subprocess.run(["git", "-C", d] + list(args), capture_output=True,
+        out = subprocess.run(base + ["-C", d] + list(args), capture_output=True,
                              text=True, timeout=30)
         return (out.stdout or "").strip()
     except Exception as exc:
@@ -38,19 +46,19 @@ def _git(*args):
         return ""
 
 
-def commit(msg):
-    _git("add", "-A")
-    _git("commit", "-m", msg)
-
-
 def tokens():
     d = root()
-    if not d or not os.path.isdir(d):
-        return {"error": "no memory dir for the current agent"}
+    if not d:
+        return {"error": "no agent set"}
+    if not os.path.isdir(d):
+        return {"total_tokens": 0, "files": [], "note": "no memory dir yet"}
+    base = _exe("letta")
+    if not base:
+        return {"error": "letta not on PATH"}
     try:
-        out = subprocess.run(
-            ["letta", "memory", "tokens", "--memory-dir", d, "--format", "json"],
-            capture_output=True, text=True, timeout=60)
+        out = subprocess.run(base + ["memory", "tokens", "--memory-dir", d,
+                                     "--format", "json"],
+                             capture_output=True, text=True, timeout=60)
         return json.loads(out.stdout or "{}")
     except Exception as exc:
         return {"error": "%s: %s" % (type(exc).__name__, exc)}

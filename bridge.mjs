@@ -1,6 +1,4 @@
 // Letta Agent SDK bridge. JSON lines on stdin, JSON lines on stdout.
-// stdin:  {"cmd":"init"|"send"|"approve"|"tool_result"|"perm"|"abort"|"close", ...}
-// stdout: {"ev":"text"|"think"|"tool"|"result"|"approval"|"done"|"error"|"queue", ...}
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { LettaAgentClient } from "@letta-ai/letta-agent-sdk";
@@ -22,6 +20,7 @@ const AGENT = arg("agent", "");
 const CONV = arg("conv", "");
 const CWD = arg("cwd", process.cwd());
 const PERM = arg("perm", "standard");
+const MODEL = arg("model", "");
 const MCP_FILE = arg("mcp-file", "");
 const TOOLS_FILE = arg("tools-file", "");
 const PERSONA_FILE = arg("persona-file", "");
@@ -39,6 +38,7 @@ const inflight = new Map();
 let seq = 0;
 let session = null;
 let perm = PERM;
+let closing = false;
 const queue = [];
 let running = false;
 
@@ -87,22 +87,22 @@ async function open() {
       permissionMode: perm,
       baseTools: BASE,
       skillSources: [],
+      ...(MODEL ? { model: MODEL } : {}),
     });
     out({ ev: "agent", agent: agentId });
   }
+  const opts = {
+    cwd: CWD,
+    permissionMode: perm,
+    canUseTool,
+    mcpServers: MCP,
+    tools: TOOLS.map(pythonTool),
+    skillSources: [],
+    ...(MODEL ? { model: MODEL } : {}),
+  };
   session = CONV
-    ? await client.resumeSession(CONV, {
-        cwd: CWD, canUseTool, mcpServers: MCP,
-        tools: TOOLS.map(pythonTool),
-		permissionMode: perm,
-		skillSources: [],
-      })
-    : await client.createSession(agentId, {
-        cwd: CWD, canUseTool, mcpServers: MCP,
-        tools: TOOLS.map(pythonTool),
-		permissionMode: perm,
-		skillSources: [],
-      });
+    ? await client.resumeSession(CONV, opts)
+    : await client.createSession(agentId, opts);
   out({ ev: "ready", agent: agentId, conversation: session.conversationId ?? "" });
 }
 
@@ -126,7 +126,9 @@ async function turn(text) {
       } else if (m.type === "queue_update") {
         out({ ev: "queue", n: m.queue?.length ?? 0 });
       } else if (m.type === "error") {
-        out({ ev: "error", text: m.message + (m.errorDetail ? ": " + m.errorDetail : "") });
+        const detail = m.message + (m.errorDetail ? ": " + m.errorDetail : "");
+        out({ ev: "error", text: /token/i.test(detail)
+          ? "PROMPT TOO LARGE - " + detail : detail });
       } else if (m.type === "result") {
         out({ ev: "done", ok: m.success, stop: m.stopReason, code: m.errorCode ?? "",
               text: m.result ?? "" });
@@ -137,11 +139,20 @@ async function turn(text) {
     out({ ev: "done", ok: false, stop: "error", code: "bridge", text: "" });
   } finally {
     running = false;
-    if (queue.length) void turn(queue.shift());
+    if (queue.length && !closing) void turn(queue.shift());
   }
 }
 
-createInterface({ input: process.stdin }).on("line", async (line) => {
+const rl = createInterface({ input: process.stdin });
+
+rl.on("close", () => {
+  log("stdin closed, exiting");
+  closing = true;
+  try { session?.close(); } catch {}
+  setTimeout(() => process.exit(0), 300);
+});
+
+rl.on("line", async (line) => {
   let m;
   try { m = JSON.parse(line); } catch { return; }
   try {
@@ -167,11 +178,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       if (running) { queue.push(m.text); out({ ev: "queue", n: queue.length }); return; }
       return void turn(m.text);
     }
-    if (m.cmd === "close") { session?.close(); out({ ev: "closed" }); process.exit(0); }
+    if (m.cmd === "close") { closing = true; session?.close(); out({ ev: "closed" }); process.exit(0); }
   } catch (e) {
     out({ ev: "error", text: String(e?.message ?? e) });
   }
 });
 
-process.on("SIGTERM", () => { session?.close(); process.exit(0); });
+process.on("SIGTERM", () => { try { session?.close(); } catch {}; process.exit(0); });
 log("bridge up, url=" + LETTA_URL);

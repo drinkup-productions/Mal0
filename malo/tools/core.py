@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 
-from ..core import config, memory, personas, profiles
+from ..core import config, personas, profiles
 
 
 UNDO_MAX = 50

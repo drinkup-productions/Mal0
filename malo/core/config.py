@@ -93,6 +93,12 @@ DEFAULT_CFG = {
     "interest_recent": {},
     "research_idle_min": 45,
     "memory_budget_tokens": 800,
+    "letta_agent": "",
+    "letta_conversation": "",
+    "permission_mode": "standard",
+    "mcp_file": "",
+    "persona_text": "",
+    "tool_allow": [],
 }
 
 CFG = {}
