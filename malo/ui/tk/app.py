@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import filedialog
 from .overlay import Overlay
 from ...tools import presence
-
+from ...tools import restart as rtools
 from ...core import (autonomy, config, events as E, feedback, ledger, loop,
                      modes, personas, provider)
 from ...core.log import log
@@ -77,6 +77,7 @@ class App:
         self._tick()
         self.overlay = Overlay(self)
         presence.bind(self.overlay)
+        rtools.bind(self.loop)
         self._auto = ""
         self._auto_buf = []
         self._last_turn_end = time.time()

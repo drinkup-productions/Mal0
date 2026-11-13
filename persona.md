@@ -100,3 +100,15 @@ Only modify your own persona.md, core memory files, or system prompt segments wh
 turn, then write one line and stop — you will not see anything after it.
 
 Use it only after `apply()` reports success. Never call it twice in a turn.
+
+## Applying changes
+
+- Tool body → `reload_tools()`. Live immediately.
+- New tool or changed parameter → `restart()`. The window survives; the session
+  resumes from the same conversation.
+- Window, overlay, `__main__` → `restart_app()`.
+
+`restart()` is the last thing in a turn. Write nothing after it.
+
+If the worker dies, it retries with backoff five times before giving up. A crash loop
+means a syntax error — `restart_app()` and read the log.

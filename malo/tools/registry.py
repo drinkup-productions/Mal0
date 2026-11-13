@@ -6,7 +6,7 @@ from ..core import config, perm, skills
 from ..platform import current
 from . import memory as memtools
 
-CONFIRM = {"write", "edit", "bash", "restart"}
+CONFIRM = {"write", "edit", "bash"}
 DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
                 "mouse_move", "click", "scroll", "key", "type_text",
                 "uia_tree", "uia_find", "uia_act"}
@@ -46,7 +46,8 @@ IMPL = {
     "memory_status": memtools.memory_status, "memory_view": memtools.memory_view,
     "memory_write": memtools.memory_write, "memory_append": memtools.memory_append,
     "memory_prune": memtools.memory_prune,
-    "restart": rtools.restart,
+    "restart": rtools.restart_worker, "restart_app": rtools.restart_app,
+    "reload_tools": lambda **kw: reload_tools(**kw),
 }
 
 
@@ -228,10 +229,12 @@ CORE_SPECS = [
           ["label", "text"]),
     _spec("memory_prune", "Trim notes.md oldest-first until under budget. Logged.",
           {}, []),
-    _spec("restart", "Restart yourself so an applied change takes effect. Call it as "
-                     "the LAST action of a turn, then stop.",
-          {"delay": {"type": "integer", "description": "Seconds before the kill. Default 3."}},
-          []),
+    _spec("restart", "Restart the agent process so an applied change takes effect. "
+                     "Cheap; the window stays up. Call it last in a turn, then stop.",
+          {}, []),
+    _spec("restart_app", "Restart the whole application. Needed only for window, "
+                         "overlay or entry point changes.",
+          {"delay": {"type": "integer"}}, []),
 ]
 
 ANDROID_SPECS = [
