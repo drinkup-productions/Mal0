@@ -1,7 +1,7 @@
 """Tool specs, dispatch and the confirm set."""
-from . import (android as atools, core, input as itools, mcp, modes as mtools,
-               perchance, profiles as ptools, screen, selfdev as sdev,
-               skills as stools, uia, vision)
+from . import (android as atools, core, input as itools, jobs as jtools, mcp,
+               modes as mtools, perchance, presence, profiles as ptools, screen,
+               selfdev as sdev, skills as stools, uia, vision, research)
 from ..core import config, perm, skills
 from ..platform import current
 
@@ -36,6 +36,13 @@ IMPL = {
     "screen_look": screen.look, "screen_find": screen.find,
     "screen_click": screen.click_text, "screen_wait": screen.wait_for,
     "screen_read": screen.read,
+    "job_enqueue": jtools.job_enqueue, "job_claim": jtools.job_claim,
+    "job_status": jtools.job_status, "job_result": jtools.job_result,
+    "job_fail": jtools.job_fail,
+    "presence_show": presence.presence_show, "presence_hide": presence.presence_hide,
+    "presence_say": presence.presence_say, "presence_quiet": presence.presence_quiet,
+    "interest_add": research.interest_add, "interest_list": research.interest_list,
+    "tool_allow": [],
 }
 
 
@@ -165,6 +172,46 @@ CORE_SPECS = [
     _spec("screen_read", "OCR one rectangle of the screen.", 
           {"x": {"type": "integer"}, "y": {"type": "integer"},
            "w": {"type": "integer"}, "h": {"type": "integer"}}, ["x", "y", "w", "h"]),
+    _spec("read", "Read a file with line numbers, or list a directory. Returns a "
+                  "window; the trailer gives the next offset - page it with offset=.",
+          {"path": {"type": "string"},
+           "offset": {"type": "integer", "description": "First line, 1-based."},
+           "limit": {"type": "integer", "description": "How many lines. Default 400."}},
+          ["path"]),
+    _spec("write", "Create or overwrite a whole file. Creates parent folders.",
+          {"path": {"type": "string"}, "content": {"type": "string"}},
+          ["path", "content"]),
+    _spec("edit", "Replace one block of text. 'old' must appear exactly once.",
+          {"path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}},
+          ["path", "old", "new"]),
+    _spec("job_enqueue", "Queue work for this machine. tier 'large' is for jobs that "
+                         "need the big model; 'small' for short ones.",
+          {"goal": {"type": "string"},
+           "tier": {"type": "string", "description": "small or large, default large."},
+           "conv": {"type": "string"}, "idem": {"type": "string"}},
+          ["goal"]),
+    _spec("job_claim", "Take the oldest queued job. Returns {job: null} when empty.",
+          {}, []),
+    _spec("job_status", "Status of one job.",
+          {"job_id": {"type": "string"}}, ["job_id"]),
+    _spec("job_result", "Complete a claimed job with its result.",
+          {"job_id": {"type": "string"}, "result": {"type": "string"}},
+          ["job_id", "result"]),
+    _spec("job_fail", "Fail a claimed job.",
+          {"job_id": {"type": "string"}, "error": {"type": "string"}},
+          ["job_id", "error"]),
+    _spec("write", "Create or overwrite a whole file. Creates parent folders.",
+          {"path": {"type": "string"}, "content": {"type": "string"}},
+          ["path", "content"]),
+    _spec("presence_show", "Put your sprite back on the desktop.", {}, []),
+    _spec("presence_hide", "Take your sprite off the desktop.", {}, []),
+    _spec("presence_say", "Speak one short line on the sprite. Rate limited.",
+          {"text": {"type": "string"}, "ms": {"type": "integer"}}, ["text"]),
+    _spec("presence_quiet", "Stay quiet for N minutes.",
+          {"minutes": {"type": "integer"}}, []),
+    _spec("interest_add", "Add a topic to the idle research rotation.",
+          {"topic": {"type": "string"}}, ["topic"]),
+    _spec("interest_list", "Show research topics and when each last ran.", {}, []),
 ]
 
 ANDROID_SPECS = [

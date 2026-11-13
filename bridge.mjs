@@ -85,17 +85,23 @@ async function open() {
         { label: "journal", value: "(empty)" },
       ],
       permissionMode: perm,
+      baseTools: BASE,
+      skillSources: [],
     });
     out({ ev: "agent", agent: agentId });
   }
   session = CONV
     ? await client.resumeSession(CONV, {
-        cwd: CWD, permissionMode: perm, canUseTool, mcpServers: MCP,
+        cwd: CWD, canUseTool, mcpServers: MCP,
         tools: TOOLS.map(pythonTool),
+		permissionMode: perm,
+		skillSources: [],
       })
     : await client.createSession(agentId, {
-        cwd: CWD, permissionMode: perm, canUseTool, mcpServers: MCP,
+        cwd: CWD, canUseTool, mcpServers: MCP,
         tools: TOOLS.map(pythonTool),
+		permissionMode: perm,
+		skillSources: [],
       });
   out({ ev: "ready", agent: agentId, conversation: session.conversationId ?? "" });
 }

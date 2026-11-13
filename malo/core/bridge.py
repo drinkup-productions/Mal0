@@ -1,10 +1,13 @@
 """Owns the Node bridge process. The only path from Python to the agent."""
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 import threading
+
+from . import config
 
 
 def _find(name):
@@ -18,6 +21,15 @@ def _find(name):
 
 
 BRIDGE = _find("bridge.mjs")
+PERSONA = _find("persona.md")
+
+
+def _hash(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()[:16]
+    except Exception:
+        return ""
 
 
 class Bridge:
@@ -51,19 +63,40 @@ class Bridge:
         self._tmp.append(fh.name)
         return fh.name
 
-    def _argv(self):
-        if not BRIDGE:
-            raise RuntimeError("bridge.mjs not found above malo/core")
+    def _persona_arg(self):
+        """A persona edit does not silently discard memory; it asks for a rebuild."""
+        if PERSONA:
+            digest = _hash(PERSONA)
+            if digest and digest != self.cfg.get("persona_hash"):
+                if self.cfg.get("letta_agent") and not self.cfg.get("rebuild_agent"):
+                    self.cfg["persona_stale"] = True
+                self.cfg["persona_hash"] = digest
+            return ["--persona-file", PERSONA]
+        if self.cfg.get("persona_text"):
+            return ["--persona-file", self._temp(self.cfg["persona_text"], ".txt")]
+        return []
+
+    def _specs(self):
         from ..tools import registry
+        allow = set(self.cfg.get("tool_allow") or [])
         specs = []
         for s in registry.all_specs():
             f = s.get("function") or {}
-            if f.get("name"):
-                specs.append({"name": f["name"],
-                              "label": f.get("name"),
-                              "description": f.get("description") or "",
-                              "parameters": f.get("parameters") or
-                              {"type": "object", "properties": {}}})
+            name = f.get("name")
+            if not name:
+                continue
+            if allow and name not in allow:
+                continue
+            specs.append({"name": name,
+                          "label": name,
+                          "description": f.get("description") or "",
+                          "parameters": f.get("parameters") or
+                          {"type": "object", "properties": {}}})
+        return specs
+
+    def _argv(self):
+        if not BRIDGE:
+            raise RuntimeError("bridge.mjs not found above malo/core")
         root = os.path.dirname(BRIDGE)
         argv = [self._node(), BRIDGE,
                 "--url", self.cfg.get("letta_url") or "ws://127.0.0.1:4500",
@@ -71,12 +104,11 @@ class Bridge:
                 "--perm", self.cfg.get("permission_mode") or "standard",
                 "--mcp-file", self.cfg.get("mcp_file") or
                 os.path.join(root, "mcp_servers.json"),
-                "--tools-file", self._temp(specs, ".json"),
-                "--persona-file", self._temp(
-                    self.cfg.get("persona_text") or "You are MalO.", ".txt")]
-        if self.cfg.get("letta_agent"):
+                "--tools-file", self._temp(self._specs(), ".json")]
+        argv += self._persona_arg()
+        if self.cfg.get("letta_agent") and not self.cfg.get("rebuild_agent"):
             argv += ["--agent", self.cfg["letta_agent"]]
-        if self.cfg.get("letta_conversation"):
+        if self.cfg.get("letta_conversation") and not self.cfg.get("rebuild_agent"):
             argv += ["--conv", self.cfg["letta_conversation"]]
         return argv
 
@@ -111,11 +143,7 @@ class Bridge:
                 continue
             ev = msg.get("ev") or "log"
             if ev == "ready":
-                if msg.get("agent"):
-                    self.cfg["letta_agent"] = msg["agent"]
-                self.conversation = msg.get("conversation") or ""
-                if self.conversation:
-                    self.cfg["letta_conversation"] = self.conversation
+                self._remember(msg)
                 self.ready.set()
             elif ev == "error" and not self.ready.is_set():
                 self.error = msg.get("text") or "bridge error"
@@ -125,6 +153,23 @@ class Bridge:
             self.error = self.error or "bridge exited before ready"
             self.ready.set()
         self.on_event("exit", {})
+
+    def _remember(self, msg):
+        """Persist identity so a restart resumes instead of starting over."""
+        changed = False
+        agent = msg.get("agent")
+        if agent and agent != self.cfg.get("letta_agent"):
+            self.cfg["letta_agent"] = agent
+            changed = True
+        self.conversation = msg.get("conversation") or ""
+        if self.conversation and self.conversation != self.cfg.get("letta_conversation"):
+            self.cfg["letta_conversation"] = self.conversation
+            changed = True
+        if self.cfg.get("rebuild_agent"):
+            self.cfg["rebuild_agent"] = False
+            changed = True
+        if changed:
+            config.save()
 
     # -- commands ------------------------------------------------------
     def _write(self, obj):

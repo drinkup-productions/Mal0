@@ -78,6 +78,20 @@ DEFAULT_CFG = {
     "perchance_timeout": 180,
     "ocr_engine": "auto",
     "ocr_dml": False,
+    "persona_file": "",
+    "persona_hash": "",
+    "persona_stale": False,
+    "rebuild_agent": False,
+    "broker_host": "127.0.0.1",
+    "broker_port": 8766,
+    "broker_token": "",
+    "mcp_via_sdk": True,
+    "overlay": True,
+    "overlay_corner": "br",
+    "overlay_quiet_until": 0.0,
+    "interests": [],
+    "interest_recent": {},
+    "research_idle_min": 45,
 }
 
 CFG = {}

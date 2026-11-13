@@ -126,11 +126,21 @@ def _open_text(p):
         enc = "utf-8"
     return open(p, encoding=enc, errors="replace")
 
+READ_BUDGET = 14000
+BASH_BUDGET = 12000
+
 
 def read(path, offset=1, limit=400):
     p = _resolve(path)
     if not p or not os.path.exists(p):
-        return {"error": "no such path: %s" % p}
+        parent = os.path.dirname(p or "")
+        near = []
+        if parent and os.path.isdir(parent):
+            near = sorted(os.listdir(parent))[:40]
+        return {"error": "no such path: %s" % p,
+                "parent": parent or "(none)",
+                "parent_entries": "\n".join(near) or "(empty)",
+                "note": "it does not exist yet - write() creates parent folders"}
     if os.path.isdir(p):
         rows = [n + ("/" if os.path.isdir(os.path.join(p, n)) else "")
                 for n in sorted(os.listdir(p))[:400]]
@@ -140,9 +150,20 @@ def read(path, offset=1, limit=400):
     total = len(lines)
     off = max(1, int(offset or 1))
     lim = max(1, min(2000, int(limit or 400)))
-    body = "\n".join("%5d| %s" % (off + i, l) for i, l in enumerate(lines[off - 1:off - 1 + lim]))
-    tail = "" if off - 1 + lim >= total else "\n... [%d more lines]" % (total - off + 1 - lim)
-    return {"path": p, "lines": total, "from": off, "content": clip(body + tail)}
+    out, used, last = [], 0, off - 1
+    for i, line in enumerate(lines[off - 1:off - 1 + lim]):
+        row = "%5d| %s\n" % (off + i, line)
+        if used + len(row) > READ_BUDGET:
+            break
+        out.append(row)
+        used += len(row)
+        last = off + i
+    body = "".join(out).rstrip("\n")
+    tail = ""
+    if last < total:
+        tail = "\n... [%d more lines - continue with offset=%d]" % (total - last, last + 1)
+    return {"path": p, "lines": total, "from": off, "to": last,
+            "content": body + tail}
 
 
 def tail(path, n=40):

@@ -5,6 +5,8 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog
+from .overlay import Overlay
+from ...tools import presence
 
 from ...core import (autonomy, config, events as E, feedback, ledger, loop,
                      modes, personas, provider)
@@ -12,6 +14,7 @@ from ...core.log import log
 from ...tools import mcp, registry
 from . import dialogs, theme
 from .avatar import DEFAULT_TUNE, AvatarRig, save_tune
+from ...core import idle, interests
 
 BG, PANEL, BORDER, FG = theme.BG, theme.PANEL, theme.BORDER, theme.FG
 MUTED, ACCENT = theme.MUTED, theme.ACCENT
@@ -56,6 +59,9 @@ class App:
         self._models_busy = False
         self.loop = loop.Loop(self.rt.bus, self.cfg)
         self.state = "idle"
+        self._presence_turn = False
+        self._presence_buf = []
+        self._last_turn_end = time.time()
 
         self.root.title("MalO ver1.1.0")
         self.root.geometry("1280x880")
@@ -69,6 +75,11 @@ class App:
         self.set_state("idle")
         self.root.after(400, self._greet)
         self._tick()
+        self.overlay = Overlay(self)
+        presence.bind(self.overlay)
+        self._auto = ""
+        self._auto_buf = []
+        self._last_turn_end = time.time()
 
     # ---- lifecycle ---------------------------------------------------
     def run(self):
@@ -85,6 +96,8 @@ class App:
         self.root.bind_all("<Motion>", self._touch, add="+")
         self.root.bind_all("<KeyPress>", self._touch, add="+")
         self._pump()
+        self.overlay.start()
+        self.root.after(60000, self._auto_tick)
         self.loop.start()
         self.waker.start()
         try:
@@ -117,6 +130,7 @@ class App:
         self.waker.halt()
         self.selfdev.halt()
         self.loop.close()
+        self.overlay.stop()
         for fn in (mcp.stop_all, self.rt.audio.stop_all,
                    lambda: self.rt.tray.stop() if self.rt.tray else None):
             try:
@@ -569,6 +583,7 @@ class App:
 
     def send(self):
         self._touch(force=True)
+        idle.user_spoke()
         if self.streaming:
             return
         text = self.input.get("1.0", "end").strip()
@@ -666,7 +681,49 @@ class App:
         self.pend = pid
         self.confirm_lbl.configure(text="run %s %s" % (name, str(args)[:90]))
         self.confirm_bar.pack(fill="x", before=self.composer)
+    def _auto_tick(self):
+        try:
+            self._maybe_speak()
+            self._maybe_research()
+        finally:
+            self.root.after(60000, self._auto_tick)
 
+    def _ready(self, gap_secs):
+        if self.streaming or self.loop.busy():
+            return False
+        if not idle.may_speak():
+            return False
+        return time.time() - self._last_turn_end >= gap_secs
+
+    def _run_auto(self, kind, prompt):
+        idle.spoke()
+        self._auto = kind
+        self._auto_buf = []
+        self.set_state("thinking")
+        self.loop.run([{"role": "user", "content": prompt}],
+                      self.model_var.get(), self.rt.platform.name, max_steps=0)
+
+    def _maybe_speak(self):
+        if not self._ready(600):
+            return
+        self._run_auto("presence",
+                       "[presence] One short line, under 12 words, as if you just "
+                       "noticed they are still there. No greeting, no question, "
+                       "no tools.")
+
+    def _maybe_research(self):
+        mins = float(self.cfg.get("research_idle_min") or 2)
+        if not self._ready(mins * 60):
+            return
+        topic = interests.pick()
+        if not topic:
+            return
+        interests.mark(topic)
+        self._run_auto("research",
+                       "[research] Topic: %s. Search once, fetch the single best "
+                       "result, then reply with ONE line: the URL, a space, then "
+                       "twelve words or fewer on why it is worth their time. "
+                       "No preamble, no tools other than search and fetch." % topic)
     def _pump(self):
         self.rt.bus.drain(self._handle)
         self._flush_delta()
@@ -697,6 +754,8 @@ class App:
                 self.rig.talking = True
             self._delta_buf.append(ev["text"])
             self._turn_reply.append(ev["text"])
+            if self._auto:
+                self._auto_buf.append(ev["text"])
         elif t == E.TOOL_RESULT:
             ok = ev.get("ok")
             self._ins(ev["text"][:600] + "\n", "toolout" if ok else "toolbad")
@@ -711,6 +770,20 @@ class App:
             self._pend_q.append((ev["id"], ev["name"], ev["args"]))
             self._show_confirm()
         elif t == E.TURN:
+            if self._auto:
+                text = "".join(self._auto_buf).strip()
+                kind, self._auto = self._auto, ""
+                if text:
+                    self.overlay.say(text, 8000)
+                    if kind == "research":
+                        self.rt.bus.emit(E.ev(E.THINK, text=""))
+                        try:
+                            from ...tools import vision
+                            vision.notify("MalO", text[:180])
+                        except Exception:
+                            pass
+                self._finish_turn()
+                return
             self._push_turn(ev.get("messages"))
             self._finish_turn()
         elif t == E.USAGE:
@@ -770,6 +843,7 @@ class App:
         self._turn_reply = []
         self._pend_q = []
         self.streaming = False
+        self._last_turn_end = time.time()
         self.send_btn.configure(state="normal")
         self.stop_btn.pack_forget()
         self.confirm_bar.pack_forget()

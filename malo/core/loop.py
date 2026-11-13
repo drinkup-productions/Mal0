@@ -104,6 +104,9 @@ class Loop:
                 log("agent %s" % m.get("agent"))
             elif kind == "ready":
                 log("bridge ready, conversation %s" % m.get("conversation"))
+                if self.cfg.get("persona_stale"):
+                    self.cfg["persona_stale"] = False
+                    log("persona.md changed - set rebuild_agent to apply it")
             elif kind == "exit":
                 self.bus.emit(E.ev(E.ERROR, text="bridge exited"))
             elif kind == "log":
@@ -145,5 +148,8 @@ class Loop:
                 result = {"error": "%s: %s" % (type(exc).__name__, exc)}
             bad = "error" in result
             if self._bridge:
-                self._bridge.tool_result(ident, json.dumps(result)[:6000], bad)
+                blob = json.dumps(result)
+                if len(blob) > 24000:
+                    blob = blob[:24000] + " ... [tool result truncated]"
+                self._bridge.tool_result(ident, blob, bad)
         threading.Thread(target=work, daemon=True).start()

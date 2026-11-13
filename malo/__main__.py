@@ -21,18 +21,29 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--webview", action="store_true")
+    ap.add_argument("--pair", nargs="?", const="cli",
+                    help="mint a broker device token and exit")
+    ap.add_argument("--broker", action="store_true", help="run the job broker")
     args = ap.parse_args()
 
     rt = runtime.Runtime()
 
+    if args.pair:
+        from .core import broker
+        return broker.pair(args.pair)
+
     if args.selftest:
         return selftest(rt)
 
-    threading.Thread(target=mcp.start_all, daemon=True).start()
+    if not rt.cfg.get("mcp_via_sdk"):
+        threading.Thread(target=mcp.start_all, daemon=True).start()
+    if args.broker:
+        from .core import broker
+        threading.Thread(target=_run_broker, args=(broker,), daemon=True).start()
     personas.save()
     skills.load_all()
-    _log.log("start platform=%s persona=%s"
-             % (rt.platform.name, personas.active(rt.cfg)))
+    _log.log("start platform=%s persona=%s broker=%s"
+             % (rt.platform.name, personas.active(rt.cfg), bool(args.broker)))
 
     if args.server:
         stop = threading.Event()
@@ -52,6 +63,14 @@ def main():
     else:
         from .ui.tk.app import App
         App(rt, want_tray=not args.no_tray).run()
+
+
+def _run_broker(broker):
+    try:
+        broker.serve()
+    except OSError as exc:
+        _log.log("broker failed: %s" % exc)
+        print("broker failed: %s" % exc)
 
 
 def selftest(rt):
