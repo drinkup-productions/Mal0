@@ -15,6 +15,7 @@ from ...tools import mcp, registry
 from . import dialogs, theme
 from .avatar import DEFAULT_TUNE, AvatarRig, save_tune
 from ...core import idle, interests
+from ...core import workerloop
 
 BG, PANEL, BORDER, FG = theme.BG, theme.PANEL, theme.BORDER, theme.FG
 MUTED, ACCENT = theme.MUTED, theme.ACCENT
@@ -58,6 +59,7 @@ class App:
         self._cap_until = 0.0
         self._models_busy = False
         self.loop = loop.Loop(self.rt.bus, self.cfg)
+        self.jobs = workerloop.WorkerLoop(self.rt.bus, self.cfg, self.loop)
         self.state = "idle"
         self._presence_turn = False
         self._presence_buf = []
@@ -99,8 +101,10 @@ class App:
         self._pump()
         self.overlay.start()
         self.root.after(60000, self._auto_tick)
-        self.loop.start()
+        threading.Thread(target=self.loop.start, daemon=True,
+                         name="worker-start").start()
         self.waker.start()
+        self.jobs.start()
         try:
             self.root.mainloop()
         except KeyboardInterrupt:
@@ -132,6 +136,7 @@ class App:
         self.selfdev.halt()
         self.loop.close()
         self.overlay.stop()
+        self.jobs.stop()
         for fn in (mcp.stop_all, self.rt.audio.stop_all,
                    lambda: self.rt.tray.stop() if self.rt.tray else None):
             try:

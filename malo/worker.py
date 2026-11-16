@@ -12,9 +12,14 @@ from .core import config
 from .core.bridge import Bridge
 
 
-def _out(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+def _out(kind, payload):
+    try:
+        payload = dict(payload or {})
+        payload["ev"] = kind
+        sys.stdout.write(json.dumps(payload) + "\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
 
 
 def main(argv=None):

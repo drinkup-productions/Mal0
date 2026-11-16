@@ -99,6 +99,8 @@ DEFAULT_CFG = {
     "mcp_file": "",
     "persona_text": "",
     "tool_allow": [],
+    "job_timeout": 1800,
+    "job_small_local": False,
 }
 
 CFG = {}

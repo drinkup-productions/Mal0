@@ -14,6 +14,7 @@ class Loop:
         self.mode = "letta"
         self._worker = None
         self._seen = {}
+        self.last_text = ""
 
     def start(self):
         self._worker = Worker(self.cfg, self._event)
@@ -33,6 +34,7 @@ class Loop:
                      and isinstance(m.get("content"), str)), "")
         if last:
             self._worker.send(last)
+        self.last_text = ""
 
     def restore(self):
         pass
@@ -88,11 +90,7 @@ class Loop:
             elif kind == "queue":
                 self.bus.emit(E.ev(E.THINK, text="queued (%s)" % m.get("n")))
             elif kind == "done":
-                self._seen.clear()
-                if not m.get("ok"):
-                    self.bus.emit(E.ev(E.ERROR, text="%s %s" % (m.get("code") or "",
-                                                                m.get("stop") or "")))
-                self.bus.emit(E.ev(E.TURN, messages=[]))
+                self.last_text = m.get("text") or ""
             elif kind == "error":
                 self.bus.emit(E.ev(E.ERROR, text=m.get("text") or "worker error"))
             elif kind == "dead":
