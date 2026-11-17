@@ -109,7 +109,7 @@ _paths = None
 
 PRESETS = {"local": "http://127.0.0.1:1234/v1",
            "freellmapi": "http://127.0.0.1:3001/v1",
-           "custom": ""}
+           "custom": "http://127.0.0.1:8080/v1"}
 
 
 def paths():

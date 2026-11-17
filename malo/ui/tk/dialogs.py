@@ -33,12 +33,41 @@ def open_settings(app):
         app.settings_win.deiconify()
         app.settings_win.lift()
         return
-    w = tk.Toplevel(app.root)
-    app.settings_win = w
-    w.title("MalO - settings")
-    w.configure(bg=BG)
-    w.geometry("560x1260")
-    w.transient(app.root)
+    win = tk.Toplevel(app.root)
+    app.settings_win = win
+    win.title("MalO - settings")
+    win.configure(bg=BG)
+    win.geometry("600x780")
+    win.minsize(460, 380)
+    win.transient(app.root)
+
+    outer = tk.Frame(win, bg=BG)
+    outer.pack(fill="both", expand=True)
+    canvas = tk.Canvas(outer, bg=BG, highlightthickness=0)
+    bar = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=bar.set)
+    bar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    w = tk.Frame(canvas, bg=BG)
+    cid = canvas.create_window((0, 0), window=w, anchor="nw")
+
+    def _fit(_e=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        canvas.itemconfigure(cid, width=canvas.winfo_width())
+
+    w.bind("<Configure>", _fit)
+    canvas.bind("<Configure>", _fit)
+
+    def _wheel(e):
+        try:
+            if e.widget.winfo_toplevel() is not win:
+                return
+        except Exception:
+            return
+        canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+    win.bind_all("<MouseWheel>", _wheel)
 
     tk.Label(w, text="Settings", bg=BG, fg=FG,
              font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(12, 6))
