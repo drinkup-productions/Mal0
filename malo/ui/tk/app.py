@@ -83,6 +83,7 @@ class App:
         self._auto = ""
         self._auto_buf = []
         self._last_turn_end = time.time()
+        
 
     # ---- lifecycle ---------------------------------------------------
     def run(self):
@@ -238,7 +239,9 @@ class App:
         self.txt.pack(side="left", fill="both", expand=True)
         sb.configure(command=self.txt.yview)
         self._tags()
-
+        self.activity = tk.Label(right, text="", bg=BG, fg=MUTED, anchor="w",
+                                 font=("Segoe UI", 8))
+        self.activity.pack(fill="x", padx=14)
         self.confirm_bar = tk.Frame(right, bg="#3a2f10")
         self.confirm_lbl = tk.Label(self.confirm_bar, text="", bg="#3a2f10", fg="#ffd479",
                                     font=("Segoe UI", 9), anchor="w")
@@ -670,6 +673,13 @@ class App:
 
     def stop(self):
         self.loop.release()
+        self.root.after(2500, self._force_unlock)
+
+    def _force_unlock(self):
+        if not self.streaming:
+            return
+        self._ins("[stopped]\\n", "sys")
+        self._finish_turn()
 
     def _approve(self, ok):
         if self.pend is not None:
@@ -705,6 +715,9 @@ class App:
         idle.spoke()
         self._auto = kind
         self._auto_buf = []
+        self.streaming = True
+        self.send_btn.configure(state="disabled")
+        self.stop_btn.pack(fill="both", expand=True, pady=(4, 0))
         self.set_state("thinking")
         self.loop.run([{"role": "user", "content": prompt}],
                       self.model_var.get(), self.rt.platform.name, max_steps=0)
@@ -747,12 +760,19 @@ class App:
         if t != E.DELTA:
             self._flush_delta()
         if t == E.THINK:
-            if not self._think_open:
-                self._ins("", "think")
-                self._think_open = True
-            self._ins(ev["text"], "think")
+            raw = ev.get("text") or ""
+            if self.cfg.get("thinking_inline"):
+                if not self._think_open:
+                    self._ins("", "think")
+                    self._think_open = True
+                self._ins(raw, "think")
+            else:
+                line = " ".join(raw.split())[:140]
+                if line:
+                    self.activity.configure(text=line)
         elif t == E.DELTA:
             self._think_open = False
+            self.activity.configure(text="")
             if not self.bot_open:
                 self._ins("malo \u25b8 ", "bot")
                 self.bot_open = True
@@ -762,6 +782,8 @@ class App:
             self._turn_reply.append(ev["text"])
             if self._auto:
                 self._auto_buf.append(ev["text"])
+        elif t == E.TOOL:
+            self.activity.configure(text="tool: %s" % ev.get("name"))
         elif t == E.TOOL_RESULT:
             ok = ev.get("ok")
             self._ins(ev["text"][:600] + "\n", "toolout" if ok else "toolbad")
@@ -790,6 +812,7 @@ class App:
                             pass
                 self._finish_turn()
                 return
+            self.activity.configure(text="")
             self._push_turn(ev.get("messages"))
             self._finish_turn()
         elif t == E.USAGE:
@@ -800,6 +823,7 @@ class App:
             self._apply_models(ev.get("ids") or [])
         elif t == E.ERROR:
             self.bot_open = False
+            self.activity.configure(text="")
             self._ins("!! %s\n" % ev["text"], "sys")
 
     def _push_turn(self, msgs):

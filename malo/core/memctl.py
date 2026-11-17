@@ -45,6 +45,10 @@ def _git(*args):
         log("memctl git: %s" % exc)
         return ""
 
+def commit(msg):
+    if not _git("add", "-A") and not _git("status", "--porcelain"):
+        log("memctl: git add produced nothing")
+    _git("commit", "-m", msg)
 
 def tokens():
     d = root()

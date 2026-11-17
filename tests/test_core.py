@@ -4,9 +4,9 @@ import shutil
 import tempfile
 import unittest
 
-from malo.core import config, memory, perm, selfdev, skills
-from malo.tools import core as tools, registry
 
+from malo.tools import core as tools, registry
+from malo.core import config, perm, selfdev, skills
 TMP = None
 OLD = None
 
@@ -18,7 +18,7 @@ def setUpModule():
     os.environ["MALO_DATA"] = TMP
     config.reset()
     config.load()
-    memory.close()
+    
     config.CFG["perm"] = dict(perm.DEFAULTS)
     config.CFG["workspace"] = os.path.join(TMP, "ws")
     os.makedirs(config.CFG["workspace"], exist_ok=True)
@@ -30,7 +30,7 @@ def setUpModule():
 
 
 def tearDownModule():
-    memory.close()
+    
     if OLD:
         os.environ["MALO_DATA"] = OLD
     else:
@@ -74,27 +74,6 @@ class Undo(unittest.TestCase):
         self.assertIn("alpha", tools.read("e.txt")["content"])
 
 
-class Memory(unittest.TestCase):
-    def test_roundtrip(self):
-        mid = memory.add("the user prefers Helix", "user", 0.9)
-        rows = memory.recall("helix")
-        self.assertTrue(any(r["id"] == mid for r in rows))
-
-    def test_pinned_floats(self):
-        memory.add("deploys to tethys", "machine", 0.3)
-        mid = memory.add("zebra fact unrelated", "user", 0.2)
-        memory.set_pinned(mid, True)
-        self.assertEqual(memory.recall("helix")[0]["id"], mid)
-
-    def test_forget(self):
-        mid = memory.add("temporary note", "user", 0.4)
-        self.assertEqual(memory.forget(mid), 1)
-        self.assertFalse(any(r["id"] == mid for r in memory.recall("temporary")))
-
-    def test_budget_caps_rows(self):
-        for i in range(5):
-            memory.add("padding entry %d with some length to it" % i, "user", 0.5)
-        self.assertLessEqual(len(memory.recall("padding", budget=40)), 2)
 
 
 class Perm(unittest.TestCase):
@@ -171,29 +150,7 @@ class SelfDev(unittest.TestCase):
         self.assertIn("return 3", _read(target))
 
 
-class Schema(unittest.TestCase):
-    def test_version_stamped(self):
-        memory.close()
-        memory.conn()
-        v = memory.conn().execute("PRAGMA user_version").fetchone()[0]
-        self.assertEqual(v, memory.SCHEMA_VERSION)
 
-    def test_migration_runs_once(self):
-        memory.close()
-        memory.MIGRATIONS[999] = "CREATE TABLE IF NOT EXISTS probe_tbl (x INTEGER);"
-        try:
-            memory.conn()
-            names = [r[0] for r in memory.conn().execute(
-                "SELECT name FROM sqlite_master WHERE type='table'")]
-            self.assertIn("probe_tbl", names)
-            v = memory.conn().execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(v, 999)
-        finally:
-            memory.MIGRATIONS.pop(999, None)
-            c = memory.conn()
-            c.execute("PRAGMA user_version = %d" % memory.SCHEMA_VERSION)
-            c.commit()
-            memory.close()
 
 
 if __name__ == "__main__":

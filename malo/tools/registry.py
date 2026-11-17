@@ -217,7 +217,7 @@ CORE_SPECS = [
     _spec("interest_add", "Add a topic to the idle research rotation.",
           {"topic": {"type": "string"}}, ["topic"]),
     _spec("interest_list", "Show research topics and when each last ran.", {}, []),
-    _spec("memory_status", "Memory block sizes, budget and over-budget flag.", {}, []),
+    _spec("memory_status", "Memory block sizes, budget and over-budget flag. verified.", {}, []),
     _spec("memory_view", "Read one memory block.",
           {"label": {"type": "string", "description": "persona, human, notes or MEMORY."}},
           ["label"]),

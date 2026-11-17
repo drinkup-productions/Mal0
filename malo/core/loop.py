@@ -15,6 +15,7 @@ class Loop:
         self._worker = None
         self._seen = {}
         self.last_text = ""
+        self._queue_n = 0
 
     def start(self):
         self._worker = Worker(self.cfg, self._event)
@@ -88,13 +89,23 @@ class Loop:
                                    name=m.get("name") or "tool",
                                    args=m.get("input") or {}))
             elif kind == "queue":
-                self.bus.emit(E.ev(E.THINK, text="queued (%s)" % m.get("n")))
+                n = int(m.get("n") or 0)
+                if n != self._queue_n:
+                    self._queue_n = n
+                    if n:
+                        self.bus.emit(E.ev(E.THINK, text="queued (%d)" % n))
             elif kind == "done":
                 self.last_text = m.get("text") or ""
+                self._seen.clear()
+                if not m.get("ok"):
+                    self.bus.emit(E.ev(E.ERROR, text="%s %s"
+                                       % (m.get("code") or "", m.get("stop") or "")))
+                self.bus.emit(E.ev(E.TURN, messages=[]))
             elif kind == "error":
                 self.bus.emit(E.ev(E.ERROR, text=m.get("text") or "worker error"))
             elif kind == "dead":
                 self.bus.emit(E.ev(E.ERROR, text="worker gave up - restart the app"))
+                self.bus.emit(E.ev(E.TURN, messages=[]))
             elif kind in ("ready", "agent", "log"):
                 if kind == "log":
                     log("worker: %s" % m.get("text"))

@@ -76,7 +76,24 @@ def open_settings(app):
     tk.Checkbutton(w, text="Idle animations", variable=idle_v, bg=BG, fg=FG,
                    selectcolor=PANEL, activebackground=BG, activeforeground=FG,
                    font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 2))
+    
+    ov_v = tk.BooleanVar(value=bool(app.cfg.get("overlay", True)))
 
+    def toggle_overlay():
+        on = bool(ov_v.get())
+        app.cfg["overlay"] = on
+        config.save()
+        if on:
+            app.overlay.start()
+            app.say("sprite on", 1400)
+        else:
+            app.overlay.stop()
+            app.say("sprite off", 1400)
+
+    tk.Checkbutton(w, text="Sprite on the desktop", variable=ov_v,
+                   command=toggle_overlay, bg=BG, fg=FG, selectcolor=PANEL,
+                   activebackground=BG, activeforeground=FG,
+                   font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 2))
     ev_v = tk.BooleanVar(value=bool(app.cfg.get("idle_evolve", True)))
     tk.Checkbutton(w, text="Switch avatar after a long idle", variable=ev_v,
                    bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,

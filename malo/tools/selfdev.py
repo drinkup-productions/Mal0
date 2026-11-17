@@ -27,7 +27,8 @@ def propose(title, rationale, files):
 
 def apply(pid, force=False):
     if config.get("self_edit") != "apply":
-        return {"error": "self_edit is %r - set it to 'apply' first" % config.get("self_edit")}
+        return {"error": "self_edit is %r - set it to 'apply' first"
+                % config.get("self_edit")}
     try:
         return selfdev.apply(pid, bool(force))
     except Exception as exc:

@@ -6,13 +6,27 @@ import re
 import shutil
 import subprocess
 import time
-
+import py_compile
 from . import config
 from .log import log
 
 SKIP = {".git", "__pycache__", "bin", ".venv", ".buildozer", "build", "dist"}
+RELOAD_OK = {"core", "memctl", "idle", "interests", "presence", "jobs", "memory",
+             "research", "screen", "vision", "input", "uia", "modes", "perchance",
+             "profiles", "selfdev", "skills", "restart", "registry_safe"}
 DEFAULT_TEST_CMD = "python -m unittest discover -s tests -t . -q"
 
+
+
+def needs_restart(rel):
+    """True when the change cannot take effect without a process restart."""
+    rel = str(rel).replace("\\", "/")
+    if not rel.startswith("malo/"):
+        return True
+    if rel.startswith(("malo/tools/", "malo/core/")):
+        stem = rel.rsplit("/", 1)[-1][:-3]
+        return stem not in RELOAD_OK
+    return True
 
 def _root():
     r = config.get("repo")
@@ -176,11 +190,16 @@ def apply(pid, force=False):
             if _sha(target) != want:
                 return {"error": "%s changed since the proposal - re-propose or force"
                         % rel}
-        plan.append((target, copy))
+        if rel.endswith(".py"):
+            try:
+                py_compile.compile(copy, doraise=True)
+            except Exception as exc:
+                return {"applied": False, "syntax": "%s: %s" % (rel, exc)}
+        plan.append((rel, target, copy))
 
     backups = []
     try:
-        for target, copy in plan:
+        for rel, target, copy in plan:
             existed = os.path.isfile(target)
             backups.append((target, tools._snapshot(target), existed))
             shutil.copy2(copy, target)
@@ -192,8 +211,20 @@ def apply(pid, force=False):
     if not res.get("ok"):
         _restore(backups)
         return {"applied": False, "reverted": True, "tests": res}
+
     meta["applied_at"] = time.time()
     with open(meta_p, "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
+
+    need = [r for r in meta["files"] if needs_restart(r)]
+    if need:
+        return {"applied": True, "files": meta["files"], "tests": res,
+                "restart_required": need,
+                "next": "call restart() as the last action of this turn"}
+    from ..tools import registry
+    stems = ",".join(r.rsplit("/", 1)[-1][:-3] for r in meta["files"]
+                     if r.endswith(".py"))
+    reloaded = registry.reload_tools(stems)
     return {"applied": True, "files": meta["files"], "tests": res,
-            "note": "restart to load the change"}
+            "reloaded": reloaded,
+            "next": "call the tool once to confirm it works"}

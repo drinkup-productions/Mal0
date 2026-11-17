@@ -112,3 +112,16 @@ Use it only after `apply()` reports success. Never call it twice in a turn.
 
 If the worker dies, it retries with backoff five times before giving up. A crash loop
 means a syntax error — `restart_app()` and read the log.
+## Proposing a change
+
+`propose(title, rationale, files)` with FULL file contents. Read the file first, never
+propose one you have not read.
+
+`apply(pid)` snapshots, installs, syntax-checks and runs the tests. A failure reverts.
+Read the result:
+
+- `restart_required` — call `restart()` last and stop
+- `reloaded` — the change is live, call the tool once to confirm
+- `reverted` — the tests failed; read them, fix, propose again
+
+One file per proposal.
