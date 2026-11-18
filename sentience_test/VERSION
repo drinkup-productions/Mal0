@@ -1,0 +1,20 @@
+# MalO ver1.1.2 - AI Sentience Framework
+# Version tracking for sentience development modules
+
+[Version]
+Major=1
+Minor=1
+Patch=2
+Build=20261118.083554
+
+[Modules]
+architecture.py=MalO ver1.1.2
+meta_cognition.py=MalO ver1.1.2
+pathways.py=MalO ver1.1.2
+metrics.py=MalO ver1.1.2
+
+[Features]
+distributed_cognition=enabled
+goal_evolution=enabled
+recursive_self_modeling=enabled
+theoretical_endpoint_tracking=enabled
