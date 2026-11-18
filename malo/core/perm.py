@@ -26,6 +26,12 @@ CLASS = {
     # screen
     "screen_look": "screen", "screen_find": "screen", "screen_click": "screen",
     "screen_wait": "screen", "screen_read": "screen",
+    "backup_list": "read", "backup_stats": "read", "bash_archives": "read",
+    "capability_ladder": "read", "capability_probe": "read",
+    "backup_restore": "write", "bash_restore": "write",
+    "selfedit_unlock": "write",
+    "install_package": "shell",
+    "add_mcp_server": "network", "remove_mcp_server": "network",
 }
 
 DEFAULTS = {"read": True, "write": True, "shell": True, "input": True,

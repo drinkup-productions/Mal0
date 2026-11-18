@@ -41,3 +41,13 @@ def proposals():
 
 def discard(pid):
     return selfdev.discard(pid)
+
+
+def status():
+    from ..core import install
+    return install.status()
+
+
+def repair():
+    from ..core import install
+    return install.ensure_git()

@@ -84,6 +84,8 @@ def read(label):
 def write(label, text, msg="memory write"):
     p = _path(label)
     os.makedirs(os.path.dirname(p), exist_ok=True)
+    from . import backup
+    backup.snapshot(p, "memory")
     with open(p, "w", encoding="utf-8", newline="") as fh:
         fh.write(text or "")
     commit(msg)

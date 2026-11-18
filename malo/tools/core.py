@@ -4,10 +4,16 @@ import os
 import shutil
 import time
 
-from ..core import config, personas, profiles
+from ..core import backup, config, personas, profiles
 
 
 UNDO_MAX = 50
+
+
+def _snapshot(p, reason="edit"):
+    """Back-compat shim: returns the copy path, or None."""
+    row = backup.snapshot(p, reason)
+    return row["copy"] if row else None
 
 
 def _undo_dir():
@@ -16,67 +22,19 @@ def _undo_dir():
     return d
 
 
-def _undo_index():
-    return os.path.join(_undo_dir(), "index.jsonl")
-
-
-def _undo_rows():
-    rows = []
-    try:
-        with open(_undo_index(), encoding="utf-8") as fh:
-            for ln in fh:
-                try:
-                    rows.append(json.loads(ln))
-                except Exception:
-                    pass
-    except FileNotFoundError:
-        pass
-    return rows
-
-
-def _snapshot(p):
-    if not p or not os.path.isfile(p):
-        return None
-    d = _undo_dir()
-    dest = os.path.join(d, "%d-%s" % (int(time.time() * 1000), os.path.basename(p)))
-    shutil.copy2(p, dest)
-    with open(_undo_index(), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"path": p, "copy": dest, "at": time.time()}) + "\n")
-    rows = _undo_rows()
-    if len(rows) > UNDO_MAX:
-        for r in rows[:-UNDO_MAX]:
-            try:
-                os.remove(r["copy"])
-            except Exception:
-                pass
-        with open(_undo_index(), "w", encoding="utf-8") as fh:
-            for r in rows[-UNDO_MAX:]:
-                fh.write(json.dumps(r) + "\n")
-    return dest
-
-
 def undo_list(limit=20):
-    rows = _undo_rows()[-int(limit or 20):][::-1]
-    now = time.time()
-    if not rows:
-        return {"undo": "(nothing recorded)"}
-    return {"undo": "\n".join("%d| %s (%dm ago)" % (i, r["path"], (now - r["at"]) // 60)
-                              for i, r in enumerate(rows))}
+    return backup.listing("", limit)
 
 
 def undo(index=0):
-    rows = _undo_rows()[::-1]
+    rows = [r for r in reversed(backup._rows())]
     if not rows:
         return {"error": "nothing to undo"}
     try:
         r = rows[int(index or 0)]
     except IndexError:
         return {"error": "no entry at %s (have %d)" % (index, len(rows))}
-    if not os.path.isfile(r["copy"]):
-        return {"error": "snapshot gone: %s" % r["copy"]}
-    os.makedirs(os.path.dirname(r["path"]), exist_ok=True)
-    shutil.copy2(r["copy"], r["path"])
-    return {"restored": r["path"], "from": r["copy"]}
+    return backup.restore(r["id"])
 
 
 def _roots():
@@ -125,6 +83,7 @@ def _open_text(p):
     else:
         enc = "utf-8"
     return open(p, encoding=enc, errors="replace")
+
 
 READ_BUDGET = 14000
 BASH_BUDGET = 12000
@@ -186,10 +145,13 @@ def write(path, content):
     d = os.path.dirname(p)
     if d:
         os.makedirs(d, exist_ok=True)
-        _snapshot(p)
+    row = backup.snapshot(p, "write")
     with open(p, "w", encoding="utf-8", newline="") as fh:
         fh.write(content or "")
-    return {"path": p, "bytes": len(content or "")}
+    out = {"path": p, "bytes": len(content or "")}
+    if row:
+        out["backup"] = row["id"]
+    return out
 
 
 def edit(path, old, new):
@@ -201,11 +163,14 @@ def edit(path, old, new):
     with open(p, encoding="utf-8", errors="replace", newline="") as fh:
         src = fh.read()
     hits = src.count(old)
-    _snapshot(p)
     if hits == 1:
+        row = backup.snapshot(p, "edit")
         with open(p, "w", encoding="utf-8", newline="") as fh:
             fh.write(src.replace(old, new, 1))
-        return {"path": p, "match": "exact"}
+        out = {"path": p, "match": "exact"}
+        if row:
+            out["backup"] = row["id"]
+        return out
     if hits > 1:
         return {"error": "'old' matches %d times - add context" % hits}
     nl = "\r\n" if "\r\n" in src else "\n"
@@ -220,19 +185,31 @@ def edit(path, old, new):
     if len(spots) > 1:
         return {"error": "ambiguous - matches %d places" % len(spots)}
     i = spots[0]
+    row = backup.snapshot(p, "edit")
     with open(p, "w", encoding="utf-8", newline="") as fh:
         fh.write(nl.join(lines[:i] + new.split(nl) + lines[i + len(old_l):]))
-    return {"path": p, "match": "fuzzy", "line": i + 1}
+    out = {"path": p, "match": "fuzzy", "line": i + 1}
+    if row:
+        out["backup"] = row["id"]
+    return out
 
 
 def bash(command, cwd=None, timeout=180):
     from .. import platform as plat
     wd = _resolve(cwd) or config.get("workspace")
+    arch = backup.pre_bash(wd, "bash")
     try:
         code, out, err = plat.current().run_shell(command, cwd=wd, timeout=int(timeout))
     except Exception as exc:
         return {"error": str(exc), "cwd": wd}
     res = {"exit_code": code, "cwd": wd}
+    if arch:
+        res["archive"] = arch["archive"]
+        diff = backup.changed_in(arch["archive"], wd)
+        touched = (diff.get("changed") or []) + (diff.get("added") or [])
+        if touched:
+            res["changed"] = "\n".join(touched[:40])
+            res["restore"] = "bash_restore(archive, path) reverts one file"
     if out.strip():
         res["stdout"] = clip(out.strip())
     if err.strip():

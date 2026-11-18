@@ -201,7 +201,7 @@ def apply(pid, force=False):
     try:
         for rel, target, copy in plan:
             existed = os.path.isfile(target)
-            backups.append((target, tools._snapshot(target), existed))
+            backups.append((target, tools._snapshot(target, "selfdev apply"), existed))
             shutil.copy2(copy, target)
         res = run_tests()
     except Exception as exc:

@@ -3,6 +3,7 @@ import base64
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -81,7 +82,7 @@ class Client:
                                      stderr=subprocess.PIPE, env=env, bufsize=0)
         threading.Thread(target=self._read, daemon=True).start()
         self._rpc("initialize", {"protocolVersion": PROTOCOL, "capabilities": {},
-                                 "clientInfo": {"name": "MalO", "version": "1.1"}}, 30)
+                                 "clientInfo": {"name": "MalO", "version": "1.1.1"}}, 30)
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
         listed = self._rpc("tools/list", {}, 30) or {}
         allow = self.spec.get("tools")

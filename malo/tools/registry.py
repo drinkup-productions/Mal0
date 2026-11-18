@@ -5,6 +5,7 @@ from . import (android as atools, core, input as itools, jobs as jtools, mcp,
 from ..core import config, perm, skills
 from ..platform import current
 from . import memory as memtools
+from . import backup as btools, capability as ctools
 
 CONFIRM = {"write", "edit", "bash"}
 DESKTOP_ONLY = {"screen_shot", "list_windows", "focus_window",
@@ -48,6 +49,15 @@ IMPL = {
     "memory_prune": memtools.memory_prune,
     "restart": rtools.restart_worker, "restart_app": rtools.restart_app,
     "reload_tools": lambda **kw: reload_tools(**kw),
+    "backup_list": btools.backup_list, "backup_restore": btools.backup_restore,
+    "backup_stats": btools.backup_stats, "bash_archives": btools.bash_archives,
+    "bash_restore": btools.bash_restore,
+    "capability_ladder": ctools.capability_ladder,
+    "capability_probe": ctools.capability_probe,
+    "install_package": ctools.install_package,
+    "add_mcp_server": ctools.add_mcp_server,
+    "remove_mcp_server": ctools.remove_mcp_server,
+    "selfedit_unlock": ctools.restart_selfdev,
 }
 
 
@@ -235,6 +245,29 @@ CORE_SPECS = [
     _spec("restart_app", "Restart the whole application. Needed only for window, "
                          "overlay or entry point changes.",
           {"delay": {"type": "integer"}}, []),
+    _spec("capability_ladder", "Ordered ways to get a capability you do not have. "
+                               "Call this the moment you think 'I can't'.",
+          {"task": {"type": "string"}}, []),
+    _spec("capability_probe", "Which runtimes, perms and servers are actually available.", {}, []),
+    _spec("install_package", "pip or winget install, then use it.",
+          {"package": {"type": "string"},
+           "manager": {"type": "string", "description": "pip (default) or winget."},
+           "timeout": {"type": "integer"}}, ["package"]),
+    _spec("add_mcp_server", "Attach an MCP server; its tools appear as name__tool.",
+          {"name": {"type": "string"}, "command": {"type": "string"},
+           "args": {"type": "string", "description": "Space separated."},
+           "tools": {"type": "array"}}, ["name", "command"]),
+    _spec("remove_mcp_server", "Detach an MCP server.", {"name": {"type": "string"}}, ["name"]),
+    _spec("selfedit_unlock", "Set self_edit to apply so propose/apply can install.", {}, []),
+    _spec("backup_list", "Recent file backups, newest first.",
+          {"pattern": {"type": "string"}, "limit": {"type": "integer"}}, []),
+    _spec("backup_restore", "Restore one backup by id.", {"row_id": {"type": "string"},
+          "path": {"type": "string"}}, ["row_id"]),
+    _spec("backup_stats", "Backup count, bytes and caps.", {}, []),
+    _spec("bash_archives", "Workspace archives taken before shell calls.", {}, []),
+    _spec("bash_restore", "Revert one file from a pre-bash archive.",
+          {"archive": {"type": "string"}, "path": {"type": "string"}},
+          ["archive", "path"]),      
 ]
 
 ANDROID_SPECS = [

@@ -61,6 +61,9 @@ def write(name, code):
     if not name:
         return {"error": "bad skill name"}
     p = os.path.join(_dir(), name + ".py")
+    from . import backup
+    backup.snapshot(p, "skill")
+    
     with open(p, "w", encoding="utf-8", newline="") as fh:
         fh.write(code or "")
     load_all()

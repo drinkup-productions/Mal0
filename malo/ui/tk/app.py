@@ -6,10 +6,11 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 from .overlay import Overlay
+from ... import __version__
 from ...tools import presence
 from ...tools import restart as rtools
 from ...core import (autonomy, config, events as E, feedback, ledger, loop,
-                     modes, personas, provider)
+                     modes, personas, provider, shutdown)
 from ...core.log import log
 from ...tools import mcp, registry
 from . import dialogs, theme
@@ -64,8 +65,10 @@ class App:
         self._presence_turn = False
         self._presence_buf = []
         self._last_turn_end = time.time()
+        self._torn = False
+        shutdown.bind(self)
 
-        self.root.title("MalO ver1.1.0")
+        self.root.title("MalO ver%s" % __version__)
         self.root.geometry("1280x880")
         self.root.minsize(980, 640)
         self.root.configure(bg=BG)
@@ -83,7 +86,7 @@ class App:
         self._auto = ""
         self._auto_buf = []
         self._last_turn_end = time.time()
-        
+
 
     # ---- lifecycle ---------------------------------------------------
     def run(self):
@@ -99,6 +102,7 @@ class App:
             self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self.root.bind_all("<Motion>", self._touch, add="+")
         self.root.bind_all("<KeyPress>", self._touch, add="+")
+        shutdown.arm()
         self._pump()
         self.overlay.start()
         self.root.after(60000, self._auto_tick)
@@ -110,7 +114,7 @@ class App:
             self.root.mainloop()
         except KeyboardInterrupt:
             pass
-        self.quit()
+        self._teardown()
 
     def show(self):
         def go():
@@ -135,9 +139,30 @@ class App:
         self.rt.quitting = True
         self.waker.halt()
         self.selfdev.halt()
-        self.loop.close()
-        self.overlay.stop()
-        self.jobs.stop()
+        self.set_state("sleepy")
+        self.activity.configure(text="writing notes before exit...")
+        self._ins("[shutting down] saving notes\n", "sys")
+
+        def work():
+            shutdown.run_and_wait("quit button")
+            try:
+                self.root.after(0, self._teardown)
+            except Exception:
+                self._teardown()
+
+        threading.Thread(target=work, daemon=False, name="quit").start()
+
+    def _teardown(self):
+        if self._torn:
+            return
+        self._torn = True
+        self.rt.quitting = True
+        for fn in (self.waker.halt, self.selfdev.halt, self.loop.close,
+                   self.overlay.stop, self.jobs.stop):
+            try:
+                fn()
+            except Exception:
+                pass
         for fn in (mcp.stop_all, self.rt.audio.stop_all,
                    lambda: self.rt.tray.stop() if self.rt.tray else None):
             try:
@@ -345,7 +370,7 @@ class App:
         self.hold_bub = None
         self._zones()
         self._avatar_mt = self._mtime()
-    
+
     def _mtime(self):
         try:
             return os.path.getmtime(self.avatar_path)
