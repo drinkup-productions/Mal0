@@ -15,7 +15,7 @@ CUES = {
     "pro": (
         ("code", "bug", "bugs", "error", "errors", "traceback", "refactor", "test",
          "tests", "compile", "function", "class", "module", "import", "path", "file",
-         "files", "log", "logs", "regex", "api", "json", "python", "powershell", "git",
+         "files", "log", "logs", "regex", "api", "json", "python", "shell", "bash", "git",
          "commit", "diff", "repo", "propose", "apply", "install", "build", "debug",
          "patch", "stack", "exception", "sql", "yaml", "cli", "unit", "research",
          "search", "look up", "find out", "docs", "readme", "source", "fix"),

@@ -16,16 +16,15 @@ def capability_probe():
 
 
 def install_package(package, manager="pip", timeout=600):
+    import sys
+
     pkg = (package or "").strip()
     if not OK_PKG.match(pkg):
         return {"error": "bad package name: %r" % package}
-    if manager == "pip":
-        cmd = "python -m pip install --upgrade %s" % pkg
-    elif manager == "winget":
-        cmd = ("winget install --accept-source-agreements "
-               "--accept-package-agreements %s" % pkg)
-    else:
-        return {"error": "manager must be pip or winget"}
+    if manager not in ("", "pip"):
+        return {"error": "manager must be pip"}
+    # install into the interpreter this app is running on, so imports resolve
+    cmd = "%s -m pip install --upgrade %s" % (sys.executable, pkg)
     from .. import platform as plat
     try:
         code, out, err = plat.current().run_shell(cmd, timeout=int(timeout or 600))

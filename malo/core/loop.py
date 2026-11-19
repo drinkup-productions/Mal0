@@ -18,7 +18,14 @@ class Loop:
         self._queue_n = 0
 
     def start(self):
-        self._worker = Worker(self.cfg, self._event)
+        # backend switch (config "backend"): "" keeps the legacy letta bridge
+        # child; "omp" supervises `omp --mode rpc-ui` instead. Both expose the
+        # same Worker surface, so nothing else in Loop changes.
+        if (self.cfg.get("backend") or "") == "omp":
+            from .ompworker import OmpWorker as Wcls
+        else:
+            Wcls = Worker
+        self._worker = Wcls(self.cfg, self._event)
         if self._worker.start():
             return True
         self.bus.emit(E.ev(E.ERROR, text="worker failed to start"))

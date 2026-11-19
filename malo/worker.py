@@ -43,8 +43,8 @@ def main(argv=None):
 
     bridge = Bridge(cfg, _out)
     if not bridge.start():
-        _out({"ev": "error", "text": "worker bridge failed: %s" % bridge.error})
-        _out({"ev": "dead", "text": bridge.error})
+        _out("error", {"text": "worker bridge failed: %s" % bridge.error})
+        _out("dead", {"text": bridge.error})
         return 1
 
     stopping = threading.Event()

@@ -1,6 +1,5 @@
 """Always-on-top sprite. Not a window: no chrome, no focus, no taskbar entry."""
 import ctypes
-import ctypes.wintypes as wt
 import math
 import os
 import time
@@ -16,7 +15,13 @@ SIZE = 320
 FPS = 12
 FULLSCREEN_POLL = 0.5
 
-_u32 = ctypes.windll.user32
+# Fullscreen detection uses user32 (Windows only). On Linux the overlay simply
+# never auto-hides; nothing else in this module needs the API.
+if os.name == "nt":
+    import ctypes.wintypes as wt
+    _u32 = ctypes.windll.user32
+else:
+    _u32 = None
 
 
 def _monitor_size(x, y):
@@ -24,6 +29,8 @@ def _monitor_size(x, y):
 
 
 def foreground_covers_screen():
+    if _u32 is None:
+        return False
     hwnd = _u32.GetForegroundWindow()
     if not hwnd:
         return False

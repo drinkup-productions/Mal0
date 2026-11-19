@@ -1,0 +1,13 @@
+# MalO - Python dependencies (Linux)
+# Setup: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# Full per-aspect system package list: docs/REQUIREMENTS-LINUX.md
+
+pillow>=10.0              # Tk avatar/overlay rendering, screenshot pipeline
+websockets>=12.0          # Letta bridge client (core/letta.py), perchance tool
+rapidocr-onnxruntime      # OCR engine on Linux (screen_ocr); Windows used WinOCR
+
+# Optional - legacy Letta backend only (start.sh warns and continues if missing):
+# letta-ai
+
+# Note: the tray icon is not implemented under Wayland yet. An X11 session plus
+# pystray + libappindicator would enable it; see docs/REQUIREMENTS-LINUX.md.

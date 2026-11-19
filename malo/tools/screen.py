@@ -118,6 +118,13 @@ def _engine_name():
 def _grab(monitor=0):
     p = current()
     shots = p.screens()
+    if not shots:
+        # platform without a geometry API (Wayland compositors): capture the
+        # whole output directly; origin is (0, 0) by definition.
+        img = p.grab(None)
+        if img is None:
+            raise RuntimeError("capture unsupported here")
+        return img, 0, 0
     idx = int(monitor or 0)
     if not 0 <= idx < len(shots):
         raise RuntimeError("monitor %d out of range 0-%d" % (idx, len(shots) - 1))
@@ -172,6 +179,10 @@ def _ocr(img, engine=None):
         if eng is None:
             raise RuntimeError("no OCR engine - pip install rapidocr")
         res = eng(tmp)
+        # newer rapidocr returns (results, timings); normalize to the flat list
+        # of [box, text, score] triples so the parser below works across versions
+        if isinstance(res, tuple):
+            res = res[0] if res and isinstance(res[0], (list, tuple)) else []
         pairs = getattr(res, "txts", None)
         if pairs is not None:
             boxes = getattr(res, "boxes", []) or []

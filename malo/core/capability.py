@@ -17,11 +17,11 @@ RUNGS = (
     ("skill", "Write a skill with write_skill(name, code). SPECS plus matching "
               "functions. It is live on the next turn. This is the cheap, "
               "reversible way to add a real tool."),
-    ("shell", "bash() reaches everything on the machine: pip, node, git, winget, "
-              "net. If a program exists, call it. If a library exists, import it "
-              "from a skill."),
-    ("install", "install_package() puts a library or CLI on the box, then use it. "
-                "Prefer pip for python, winget for applications."),
+    ("shell", "bash() reaches everything on the machine: pip, apt/dnf/pacman, "
+              "node, git, net. If a program exists, call it. If a library exists, "
+              "import it from a skill."),
+    ("install", "install_package() puts a python package on the box with pip, "
+                "then use it. Distro package managers cover native applications."),
     ("mcp", "add_mcp_server() attaches an external MCP server, and its tools "
             "appear as name__tool. Best for browsers, APIs and anything with a "
             "maintained implementation."),
@@ -47,8 +47,8 @@ def ladder(task=""):
 def probe():
     """What is actually available right now."""
     out = {}
-    for exe in ("python", "pip", "node", "npx", "uvx", "git", "winget",
-                "powershell", "pwsh"):
+    for exe in ("python3", "python", "pip", "node", "npx", "uvx", "git",
+                "xdotool", "ydotool"):
         out[exe] = bool(shutil.which(exe))
     cfg = config.CFG
     out["self_edit"] = cfg.get("self_edit")

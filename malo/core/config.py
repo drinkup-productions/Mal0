@@ -25,6 +25,13 @@ DEFAULT_CFG = {
     "letta_temperature": 0.3,
     "letta_builtin_tools": False,
     "letta_agents": {},
+    # omp rpc backend ("backend" "" = legacy letta bridge child, "omp" spawns
+    # `omp --mode rpc-ui` and speaks its JSONL RPC; see core/ompworker.py)
+    "backend": "",
+    "omp_bin": "",        # path to the omp binary (default: "omp" on PATH)
+    "omp_model": "",      # optional --model override for the OMP session
+    "omp_args": [],       # extra raw CLI args, e.g. ["--provider", "x"]
+    "omp_session": "",    # runtime: last OMP sessionFile, used to resume on respawn
     # behaviour
     "persona": "malo",
     "confirm": True,

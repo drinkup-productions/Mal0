@@ -1,12 +1,11 @@
 """Restart surfaces."""
 import os
-import shutil
 import subprocess
 
 from ..core.log import log
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SCRIPT = os.path.join(ROOT, "restart.ps1")
+SCRIPT = os.path.join(ROOT, "restart.sh")
 
 _LOOP = None
 
@@ -27,15 +26,13 @@ def restart_worker():
 
 def restart_app(delay=3):
     if not os.path.isfile(SCRIPT):
-        return {"error": "restart.ps1 missing"}
-    shell = shutil.which("pwsh") or shutil.which("powershell")
-    if not shell:
-        return {"error": "no powershell"}
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        return {"error": "restart.sh missing"}
     try:
-        subprocess.Popen([shell, "-NoProfile", "-ExecutionPolicy", "Bypass",
-                          "-File", SCRIPT, "-Delay", str(int(delay))],
-                         cwd=ROOT, creationflags=flags, close_fds=True,
+        # start_new_session detaches the relauncher from our process group so it
+        # survives when this app exits mid-shutdown (the Windows creationflags did
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP).
+        subprocess.Popen(["/bin/sh", SCRIPT, str(int(delay))],
+                         cwd=ROOT, start_new_session=True, close_fds=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL)
     except Exception as exc:

@@ -27,7 +27,11 @@ class Worker:
         self._pending = set()
 
     # -- process -------------------------------------------------------
-    def _argv(self):
+    def _host_specs(self):
+        """Registry tool specs, shaped for both backends.
+
+        The letta bridge receives them as a --tools-file JSON dump; the OMP
+        worker (core/ompworker.py) mounts the same list via set_host_tools."""
         from ..tools import registry
         allow = set(self.cfg.get("tool_allow") or [])
         specs = []
@@ -40,13 +44,16 @@ class Worker:
                           "description": f.get("description") or "",
                           "parameters": f.get("parameters") or
                           {"type": "object", "properties": {}}})
+        return specs
+
+    def _argv(self):
         argv = [sys.executable, "-m", "malo.worker",
                 "--url", self.cfg.get("letta_url") or "ws://127.0.0.1:4500",
                 "--cwd", self.cfg.get("workspace") or os.getcwd(),
                 "--perm", self.cfg.get("permission_mode") or "standard",
                 "--model", self.cfg.get("letta_model") or "",
                 "--mcp-file", self.cfg.get("mcp_file") or "",
-                "--tools-file", self._temp(specs)]
+                "--tools-file", self._temp(self._host_specs())]
         from .bridge import _find
         persona = self.cfg.get("persona_file") or _find("persona.md")
         if persona:
@@ -96,12 +103,7 @@ class Worker:
             except Exception:
                 self.on_event("log", {"text": line[:400]})
                 continue
-            ev = msg.get("ev") or "log"
-            if ev == "ready":
-                self._tries = 0
-                self._remember(msg)
-                self._ready.set()
-            self.on_event(ev, msg)
+            self._frame(msg)
         code = self.proc.poll() if self.proc else None
         if not self._ready.is_set():
             self._ready.set()
@@ -122,6 +124,19 @@ class Worker:
         self.on_event("error", {"text": "worker exited (%s), retry %d in %ds"
                                 % (code, self._tries, delay)})
         self._spawn_again(delay)
+
+    def _frame(self, msg):
+        """Dispatch one parsed frame from the child's stdout.
+
+        The letta worker speaks {"ev": kind, ...} frames; OmpWorker
+        (core/ompworker.py) overrides this hook to translate OMP RPC frames
+        instead. Ready bookkeeping stays here for the base path."""
+        ev = msg.get("ev") or "log"
+        if ev == "ready":
+            self._tries = 0
+            self._remember(msg)
+            self._ready.set()
+        self.on_event(ev, msg)
 
     def _spawn_again(self, delay):
         def go():

@@ -20,9 +20,9 @@ def config_path():
 
 
 DEFAULTS = {
-    "ddg": {"command": "%USERPROFILE%\\.local\\bin\\uvx.exe",
+    "ddg": {"command": "uvx",
             "args": ["duckduckgo-mcp-server"], "env": {}, "enabled": True, "tools": None},
-    "fetch": {"command": "%USERPROFILE%\\.local\\bin\\uvx.exe",
+    "fetch": {"command": "uvx",
               "args": ["mcp-server-fetch", "--allow-private-ips", "--ignore-robots-txt"],
               "env": {}, "enabled": True, "tools": None},
     "playwright": {"command": "npx",

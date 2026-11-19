@@ -161,12 +161,13 @@ def arm():
     if _state["armed"]:
         return
     _state["armed"] = True
-    try:
-        handler = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)(_console_handler)
-        _keepalive.append(handler)
-        ctypes.windll.kernel32.SetConsoleCtrlHandler(handler, True)
-    except Exception as exc:
-        log("console handler unavailable: %s" % exc)
+    if os.name == "nt":  # console ctrl handler is Windows-only; SIGTERM covers the rest
+        try:
+            handler = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)(_console_handler)
+            _keepalive.append(handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(handler, True)
+        except Exception as exc:
+            log("console handler unavailable: %s" % exc)
     try:
         signal.signal(signal.SIGTERM, lambda *_: run_and_wait("sigterm"))
     except Exception:
